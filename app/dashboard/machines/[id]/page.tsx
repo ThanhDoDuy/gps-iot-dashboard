@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { machinesApi } from "@/lib/api/machines"
 import { useAuthStore } from "@/lib/auth-store"
 import { Machine } from "@/lib/api/machines/types"
-import { ArrowLeft, MapPin, Clock, Activity, Calendar, Wifi } from "lucide-react"
+import { ArrowLeft, MapPin, Clock, Activity, Calendar, Wifi, Map } from "lucide-react"
 
 export default function MachineDetailPage() {
   const params = useParams()
@@ -72,6 +72,20 @@ export default function MachineDetailPage() {
 
   const formatCoordinates = (lat: number, lng: number) => {
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  }
+
+
+  const openInNewTab = () => {
+    if (!machine) return
+    
+    const currentLat = machine.lat
+    const currentLng = machine.lng
+    const lastLat = machine.last_known_lat
+    const lastLng = machine.last_known_lng
+    
+    // Create a Google Maps URL that shows both locations
+    const url = `https://www.google.com/maps/dir/${currentLat},${currentLng}/${lastLat},${lastLng}`
+    window.open(url, '_blank')
   }
 
   if (isLoading) {
@@ -229,7 +243,7 @@ export default function MachineDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Current Coordinates</label>
+                <label className="text-sm font-medium text-muted-foreground">Origin Setup Coordinates</label>
                 <p className="text-foreground font-mono text-sm">
                   {formatCoordinates(machine.lat, machine.lng)}
                 </p>
@@ -247,6 +261,22 @@ export default function MachineDetailPage() {
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Last Location Check</label>
                 <p className="text-foreground text-sm">{formatDate(machine.last_location_check)}</p>
+              </div>
+              
+              {/* Compare Button */}
+              <div className="pt-4 space-y-2">
+                <Button 
+                  variant="outline" 
+                  className="w-full flex items-center gap-2"
+                  onClick={openInNewTab}
+                >
+                  <Map className="h-4 w-4" />
+                  Compare Locations on Map
+                </Button>
+                
+                <div className="text-xs text-muted-foreground text-center">
+                  Opens Google Maps in new tab
+                </div>
               </div>
             </CardContent>
           </Card>
