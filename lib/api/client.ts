@@ -25,14 +25,6 @@ class ApiClient {
       },
     };
 
-    // Debug logging
-    console.log('API Request:', {
-      url,
-      method: config.method || 'GET',
-      headers: config.headers,
-      body: config.body
-    });
-
     try {
       const response = await fetch(url, config);
       
@@ -46,7 +38,7 @@ class ApiClient {
         throw error;
       }
 
-      return await response.json();
+      return await response?.json();
     } catch (error) {
       if (error instanceof Error) {
         throw error;

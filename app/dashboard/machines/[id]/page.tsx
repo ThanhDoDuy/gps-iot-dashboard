@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { machinesApi } from "@/lib/api/machines"
 import { useAuthStore } from "@/lib/auth-store"
 import { Machine } from "@/lib/api/machines/types"
-import { ArrowLeft, MapPin, Clock, Activity, Calendar, Wifi, Map } from "lucide-react"
+import { ArrowLeft, MapPin, Clock, Activity, Calendar, Wifi, Map, Loader2 } from "lucide-react"
 
 export default function MachineDetailPage() {
   const params = useParams()
@@ -19,6 +19,8 @@ export default function MachineDetailPage() {
   const [machine, setMachine] = useState<Machine | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastKnownAddress, setLastKnownAddress] = useState<string | null>(null)
+  const [isReverseGeocoding, setIsReverseGeocoding] = useState(false)
 
   const machineId = params.id as string
 
@@ -45,6 +47,15 @@ export default function MachineDetailPage() {
   useEffect(() => {
     fetchMachine()
   }, [isAuthenticated, accessToken, machineId])
+
+  // Reverse geocoding for last known coordinates
+  useEffect(() => {
+    if (machine && machine.last_known_lat !== undefined && machine.last_known_lng !== undefined) {
+      reverseGeocode(machine.last_known_lat, machine.last_known_lng)
+    } else {
+      setLastKnownAddress(null)
+    }
+  }, [machine])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -75,6 +86,51 @@ export default function MachineDetailPage() {
       return "N/A"
     }
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  }
+
+  // Calculate distance between two coordinates using Haversine formula
+  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371e3 // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180 // φ, λ in radians
+    const φ2 = lat2 * Math.PI / 180
+    const Δφ = (lat2 - lat1) * Math.PI / 180
+    const Δλ = (lng2 - lng1) * Math.PI / 180
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+
+    return R * c // Distance in meters
+  }
+
+  // Format distance for display
+  const formatDistance = (distanceInMeters: number): string => {
+    if (distanceInMeters >= 1000) {
+      return `${(distanceInMeters / 1000).toFixed(2)} km`
+    }
+    return `${Math.round(distanceInMeters)} m`
+  }
+
+  // Reverse geocoding function
+  const reverseGeocode = async (lat: number, lng: number) => {
+    setIsReverseGeocoding(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+      )
+      const data = await response.json()
+      if (data && data.display_name) {
+        setLastKnownAddress(data.display_name)
+      } else {
+        setLastKnownAddress("Address not found")
+      }
+    } catch (error) {
+      console.error("Error during reverse geocoding:", error)
+      setLastKnownAddress("Error fetching address")
+    } finally {
+      setIsReverseGeocoding(false)
+    }
   }
 
 
@@ -213,10 +269,6 @@ export default function MachineDetailPage() {
                   <p className="text-foreground font-mono text-sm">{machine.machine_id}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Device ID</label>
-                  <p className="text-foreground font-mono text-sm">{machine.device_id}</p>
-                </div>
-                <div>
                   <label className="text-sm font-medium text-muted-foreground">Name</label>
                   <p className="text-foreground font-medium">{machine.name}</p>
                 </div>
@@ -246,25 +298,43 @@ export default function MachineDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Origin Setup Coordinates</label>
-                <p className="text-foreground font-mono text-sm">
-                  {formatCoordinates(machine.lat, machine.lng)}
-                </p>
+                <label className="text-sm font-medium text-muted-foreground">Origin Setup Address</label>
+                <p className="text-foreground font-medium">{machine.address}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Last Known Coordinates</label>
-                <p className="text-foreground font-mono text-sm">
-                  {formatCoordinates(machine.last_known_lat, machine.last_known_lng)}
-                </p>
-                {(!machine.last_known_lat || !machine.last_known_lng) && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Same as origin setup coordinates
-                  </p>
+                <label className="text-sm font-medium text-muted-foreground">Last Known Address</label>
+                {isReverseGeocoding ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Fetching address...</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-foreground font-medium">
+                      {lastKnownAddress || "N/A"}
+                    </p>
+                    {(!machine.last_known_lat || !machine.last_known_lng) && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Same as origin setup coordinates
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Allowed Radius</label>
-                <p className="text-foreground">{machine.radius}m</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Allowed Radius</label>
+                  <p className="text-foreground">{machine.radius}m</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Far From Origin</label>
+                  <p className="text-foreground">
+                    {machine.last_known_lat !== undefined && machine.last_known_lng !== undefined
+                      ? formatDistance(calculateDistance(machine.lat, machine.lng, machine.last_known_lat, machine.last_known_lng))
+                      : "N/A"
+                    }
+                  </p>
+                </div>
               </div>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Last Location Check</label>
@@ -311,10 +381,6 @@ export default function MachineDetailPage() {
                   <label className="text-sm font-medium text-muted-foreground">Updated At</label>
                   <p className="text-foreground text-sm">{formatDate(machine.updated_at)}</p>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Last Check</label>
-                  <p className="text-foreground text-sm">{formatDate(machine.last_location_check)}</p>
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -358,20 +424,6 @@ export default function MachineDetailPage() {
                         {machine.device.status}
                       </Badge>
                     </div>
-                  </div>
-                  
-                  <div className="pt-2 border-t">
-                    <Button 
-                      variant="outline" 
-                      className="w-full"
-                      onClick={() => {
-                        // TODO: Implement refresh location
-                        console.log("Refresh location for:", machine.machine_id)
-                      }}
-                    >
-                      <Activity className="h-4 w-4 mr-2" />
-                      Refresh Location
-                    </Button>
                   </div>
                 </div>
               ) : (
