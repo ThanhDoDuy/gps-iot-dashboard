@@ -1,3 +1,2 @@
-// Devices module exports
-export * from './types';
-export * from './api';
+export { devicesApi } from './api'
+export * from './types'

@@ -29,6 +29,10 @@ export class MachinesApi {
     return apiClient.authenticatedRequest<ApiResponse<Machine>>(`/machines/${machineId}`, accessToken);
   }
 
+  async getUnlinkedMachine(accessToken: string): Promise<ApiResponse<Machine[]>> {
+    return apiClient.authenticatedRequest<ApiResponse<Machine[]>>("/machines/unlinked", accessToken);
+  }
+
   async createMachine(accessToken: string, machineData: CreateMachineRequest): Promise<ApiResponse<Machine>> {
     return apiClient.authenticatedRequest<ApiResponse<Machine>>('/machines', accessToken, {
       method: 'POST',

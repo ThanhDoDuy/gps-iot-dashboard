@@ -81,13 +81,6 @@ export default function MachineDetailPage() {
     })
   }
 
-  const formatCoordinates = (lat: number | undefined, lng: number | undefined) => {
-    if (lat === undefined || lng === undefined) {
-      return "N/A"
-    }
-    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
-  }
-
   // Calculate distance between two coordinates using Haversine formula
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
     const R = 6371e3 // Earth's radius in meters
@@ -406,10 +399,6 @@ export default function MachineDetailPage() {
                       <span className="text-sm font-medium">{machine.device.model}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Last Update:</span>
-                      <span className="text-sm">{formatDate(machine.last_location_check)}</span>
-                    </div>
-                    <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Device Status:</span>
                       <Badge 
                         variant={machine.device.status === 'active' ? 'default' : 'secondary'}
@@ -424,6 +413,14 @@ export default function MachineDetailPage() {
                         {machine.device.status}
                       </Badge>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Linked Time:</span>
+                      <span className="text-sm">{formatDate(machine.linked_time || "N/A")}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Last Update:</span>
+                      <span className="text-sm">{formatDate(machine.last_location_check)}</span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -433,17 +430,6 @@ export default function MachineDetailPage() {
                   <p className="text-sm text-muted-foreground">
                     This machine is not connected to any tracking device
                   </p>
-                  <Button 
-                    variant="outline" 
-                    className="mt-3"
-                    onClick={() => {
-                      // TODO: Implement link device functionality
-                      console.log("Link device to:", machine.machine_id)
-                    }}
-                  >
-                    <Wifi className="h-4 w-4 mr-2" />
-                    Link Device
-                  </Button>
                 </div>
               )}
             </CardContent>

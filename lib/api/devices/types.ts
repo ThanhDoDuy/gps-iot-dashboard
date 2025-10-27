@@ -1,36 +1,43 @@
-// Devices module types
 export interface Device {
-  id: string;
-  name: string;
-  type: string;
-  status: 'online' | 'offline' | 'maintenance';
-  location?: string;
-  lastSeen?: string;
-  createdAt: string;
-  updatedAt: string;
+  model: string;
+  device_id: string;
+  status: 'active' | 'inactive' | 'maintenance' | 'offline';
+  tenant_id: string;
+  machine_id?: string;
+  created_at: string;
+  updated_at: string;
+  linked_time?: string;
+  latest_location: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    timestamp: string;
+    source: string;
+  };
 }
 
 export interface CreateDeviceRequest {
-  name: string;
-  type: string;
-  location?: string;
+  device_id: string;
+  model: string;
+  status: 'active' | 'inactive' | 'maintenance' | 'offline';
+  machine_id?: string;
 }
 
 export interface UpdateDeviceRequest {
-  name?: string;
-  type?: string;
-  location?: string;
-  status?: 'online' | 'offline' | 'maintenance';
+  device_id?: string;
+  model?: string;
+  status?: 'active' | 'inactive' | 'maintenance' | 'offline';
+  machine_id?: string;
 }
 
-export interface DeviceFilters {
-  type?: string;
-  status?: 'online' | 'offline' | 'maintenance';
-  location?: string;
-  search?: string;
+export interface DeviceResponse {
+  success: boolean;
+  data: Device;
+  message?: string;
 }
 
-export interface DeviceStatus {
-  status: 'online' | 'offline' | 'maintenance';
-  lastSeen: string;
+export interface DevicesResponse {
+  success: boolean;
+  data: Device[];
+  message?: string;
 }

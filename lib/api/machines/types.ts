@@ -11,6 +11,7 @@ export interface Machine {
   last_known_lng?: number;
   last_location_check: string;
   radius: number;
+  linked_time?: string;
   tenant_id: string;
   created_at: string;
   updated_at: string;
