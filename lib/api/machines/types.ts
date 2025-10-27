@@ -14,6 +14,11 @@ export interface Machine {
   tenant_id: string;
   created_at: string;
   updated_at: string;
+  device?: {
+    model: string;
+    status: string;
+    device_id: string;
+  };
 }
 
 export interface CreateMachineRequest {

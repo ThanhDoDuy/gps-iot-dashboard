@@ -319,44 +319,81 @@ export default function MachineDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Actions */}
+          {/* Device Information */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Wifi className="h-5 w-5" />
-                Actions
+                Linked Device
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button 
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                onClick={() => {
-                  // TODO: Implement edit functionality
-                  console.log("Edit machine:", machine.machine_id)
-                }}
-              >
-                Edit Machine
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={() => {
-                  // TODO: Implement refresh location
-                  console.log("Refresh location for:", machine.machine_id)
-                }}
-              >
-                Refresh Location
-              </Button>
-              <Button 
-                variant="destructive" 
-                className="w-full"
-                onClick={() => {
-                  // TODO: Implement delete functionality
-                  console.log("Delete machine:", machine.machine_id)
-                }}
-              >
-                Delete Machine
-              </Button>
+              {machine.device ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Device ID:</span>
+                      <span className="font-mono text-sm">{machine.device.device_id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Model:</span>
+                      <span className="text-sm font-medium">{machine.device.model}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Last Update:</span>
+                      <span className="text-sm">{formatDate(machine.last_location_check)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Device Status:</span>
+                      <Badge 
+                        variant={machine.device.status === 'active' ? 'default' : 'secondary'}
+                        className={
+                          machine.device.status === 'active' 
+                            ? 'bg-green-100 text-green-700' 
+                            : machine.device.status === 'inactive'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                        }
+                      >
+                        {machine.device.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  <div className="pt-2 border-t">
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => {
+                        // TODO: Implement refresh location
+                        console.log("Refresh location for:", machine.machine_id)
+                      }}
+                    >
+                      <Activity className="h-4 w-4 mr-2" />
+                      Refresh Location
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <Wifi className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground mb-2">No device linked</p>
+                  <p className="text-sm text-muted-foreground">
+                    This machine is not connected to any tracking device
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    className="mt-3"
+                    onClick={() => {
+                      // TODO: Implement link device functionality
+                      console.log("Link device to:", machine.machine_id)
+                    }}
+                  >
+                    <Wifi className="h-4 w-4 mr-2" />
+                    Link Device
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
