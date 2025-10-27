@@ -9,20 +9,22 @@ import { useAuthStore } from "@/lib/auth-store"
 import { Tenant } from "@/lib/api/tenant/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiKeyDisplay } from "@/components/ui/api-key-display"
+import { machinesApi } from "@/lib/api/machines"
 
 export default function TenantPage() {
   const { accessToken, isAuthenticated } = useAuthStore();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [machinesCount, setMachinesCount] = useState<number>(0);
 
   const fetchTenant = async () => {
-    
+
     if (!isAuthenticated) {
       setIsLoading(false)
       return
     }
-    
+
     if (!accessToken) {
       setIsLoading(false)
       return
@@ -31,8 +33,19 @@ export default function TenantPage() {
     try {
       setIsLoading(true);
       setError(null);
+
+      // Fetch tenant data
       const resBody = await tenantApi.getCurrentTenant(accessToken);
       setTenant(resBody.data);
+
+      // Fetch machines count
+      try {
+        const machinesResponse = await machinesApi.getMachines(accessToken);
+        setMachinesCount(machinesResponse.total || 0);
+      } catch (machinesErr) {
+        console.log("Failed to fetch machines count:", machinesErr);
+        setMachinesCount(0);
+      }
     } catch (err) {
       setError('Failed to load tenant information');
       console.error('Error fetching tenant:', err);
@@ -56,8 +69,8 @@ export default function TenantPage() {
             <CardContent className="p-6">
               <div className="text-center">
                 <p className="text-destructive mb-4">{error}</p>
-                <Button 
-                  onClick={fetchTenant} 
+                <Button
+                  onClick={fetchTenant}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   Retry
@@ -183,20 +196,20 @@ export default function TenantPage() {
                   </div>
                 </div>
               ) : tenant ? (
-                  <>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Totals Users</p>
-                      <p className="text-2xl font-bold text-foreground capitalize">N/A</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Totals Devices</p>
-                      <p className="text-2xl font-bold text-foreground capitalize">N/A</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Totals Machines</p>
-                      <p className="text-2xl font-bold text-foreground">N/A</p>
-                    </div>
-                  </>
+                <>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Totals Users</p>
+                    <p className="text-2xl font-bold text-foreground capitalize">N/A</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Totals Devices</p>
+                    <p className="text-2xl font-bold text-foreground capitalize">N/A</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Totals Machines</p>
+                    <p className="text-2xl font-bold text-foreground">{machinesCount}</p>
+                  </div>
+                </>
               ) : (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">No statistics available</p>

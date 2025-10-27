@@ -1,13 +1,19 @@
 // Machines module types
 export interface Machine {
-  id: string;
+  machine_id: string;
   name: string;
-  type: string;
-  status: 'running' | 'stopped' | 'maintenance';
-  location?: string;
-  lastMaintenance?: string;
-  createdAt: string;
-  updatedAt: string;
+  device_id: string;
+  status: 'active' | 'inactive' | 'maintenance';
+  address: string;
+  lat: number;
+  lng: number;
+  last_known_lat: number;
+  last_known_lng: number;
+  last_location_check: string;
+  radius: number;
+  tenant_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateMachineRequest {
