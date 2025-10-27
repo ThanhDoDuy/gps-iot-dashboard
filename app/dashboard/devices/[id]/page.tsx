@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { devicesApi } from "@/lib/api/devices"
 import { useAuthStore } from "@/lib/auth-store"
 import { Device } from "@/lib/api/devices/types"
-import { ArrowLeft, Wifi, Clock, Activity, Calendar, MapPin, Loader2 } from "lucide-react"
+import { ArrowLeft, Wifi, Clock, Activity, Calendar, MapPin, Loader2, Map } from "lucide-react"
 
 export default function DeviceDetailPage() {
   const params = useParams()
@@ -19,6 +19,8 @@ export default function DeviceDetailPage() {
   const [device, setDevice] = useState<Device | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [locationAddress, setLocationAddress] = useState<string | null>(null)
+  const [isReverseGeocoding, setIsReverseGeocoding] = useState(false)
 
   const deviceId = params.id as string
 
@@ -45,6 +47,15 @@ export default function DeviceDetailPage() {
   useEffect(() => {
     fetchDevice()
   }, [isAuthenticated, accessToken, deviceId])
+
+  // Reverse geocoding for latest location
+  useEffect(() => {
+    if (device && device.latest_location) {
+      reverseGeocode(device.latest_location.latitude, device.latest_location.longitude)
+    } else {
+      setLocationAddress(null)
+    }
+  }, [device])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -94,6 +105,36 @@ export default function DeviceDetailPage() {
         minute: '2-digit'
       })
     }
+  }
+
+  // Reverse geocoding function
+  const reverseGeocode = async (lat: number, lng: number) => {
+    setIsReverseGeocoding(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+      )
+      const data = await response.json()
+      if (data && data.display_name) {
+        setLocationAddress(data.display_name)
+      } else {
+        setLocationAddress("Address not found")
+      }
+    } catch (error) {
+      console.error("Error during reverse geocoding:", error)
+      setLocationAddress("Error fetching address")
+    } finally {
+      setIsReverseGeocoding(false)
+    }
+  }
+
+  // Open location in Google Maps
+  const openInGoogleMaps = () => {
+    if (!device?.latest_location) return
+    
+    const { latitude, longitude } = device.latest_location
+    const url = `https://www.google.com/maps?q=${latitude},${longitude}`
+    window.open(url, '_blank')
   }
 
   if (isLoading) {
@@ -260,10 +301,30 @@ export default function DeviceDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Coordinates</label>
-                  <p className="text-foreground text-sm font-mono">
-                    {device.latest_location.latitude.toFixed(6)}, {device.latest_location.longitude.toFixed(6)}
-                  </p>
+                  <label className="text-sm font-medium text-muted-foreground">Address</label>
+                  {isReverseGeocoding ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Fetching address...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-foreground font-medium">
+                        {locationAddress || "Address not available"}
+                      </p>
+                      <div className="flex items-center justify-between mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={openInGoogleMaps}
+                          className="flex items-center gap-2"
+                        >
+                          <Map className="h-4 w-4" />
+                          View on Map
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Accuracy</label>
