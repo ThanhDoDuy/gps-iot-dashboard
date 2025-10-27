@@ -47,11 +47,6 @@ export class MachinesApi {
     });
   }
 
-  async deleteMachine(accessToken: string, machineId: string): Promise<ApiResponse<void>> {
-    return apiClient.authenticatedRequest<ApiResponse<void>>(`/machines/${machineId}`, accessToken, {
-      method: 'DELETE',
-    });
-  }
 
   async getMachineStatus(accessToken: string, machineId: string): Promise<ApiResponse<MachineStatus>> {
     return apiClient.authenticatedRequest<ApiResponse<MachineStatus>>(
@@ -80,6 +75,12 @@ export class MachinesApi {
   async stopMachine(accessToken: string, machineId: string): Promise<ApiResponse<Machine>> {
     return apiClient.authenticatedRequest<ApiResponse<Machine>>(`/machines/${machineId}/stop`, accessToken, {
       method: 'POST',
+    });
+  }
+
+  async deleteMachine(accessToken: string, machineId: string): Promise<{ success: boolean; message: string }> {
+    return apiClient.authenticatedRequest<{ success: boolean; message: string }>(`/machines/${machineId}`, accessToken, {
+      method: 'DELETE',
     });
   }
 }

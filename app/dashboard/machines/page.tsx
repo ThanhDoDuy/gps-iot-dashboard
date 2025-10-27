@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { machinesApi } from "@/lib/api/machines"
 import { useAuthStore } from "@/lib/auth-store"
 import { Machine } from "@/lib/api/machines/types"
-import { Edit, Trash2, MoreHorizontal, Save, X, Map } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { Edit, Trash2, MoreHorizontal, Save, X, Map, Plus, MapPin, Loader2 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,14 +23,15 @@ import { Label } from "@/components/ui/label"
 import { MapPicker } from "@/components/ui/map-picker"
 
 export default function MachinesPage() {
-  const router = useRouter()
-  const { accessToken, isAuthenticated } = useAuthStore()
-  const [machines, setMachines] = useState<Machine[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [deletingMachine, setDeletingMachine] = useState<string | null>(null)
-  const [editingMachine, setEditingMachine] = useState<Machine | null>(null)
+  const router = useRouter();
+  const { accessToken, isAuthenticated } = useAuthStore();
+  const { toast } = useToast();
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [deletingMachine, setDeletingMachine] = useState<string | null>(null);
+  const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [editFormData, setEditFormData] = useState({
     machine_id: "",
     name: "",
@@ -37,9 +39,24 @@ export default function MachinesPage() {
     lng: "",
     radius: "",
     address: ""
-  })
-  const [isUpdating, setIsUpdating] = useState(false)
-  const [showEditMapModal, setShowEditMapModal] = useState(false)
+  });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showEditMapModal, setShowEditMapModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [machineToDelete, setMachineToDelete] = useState<Machine | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createFormData, setCreateFormData] = useState({
+    machine_id: "",
+    name: "",
+    lat: "",
+    lng: "",
+    radius: "",
+    address: ""
+  });
+  const [isCreating, setIsCreating] = useState(false);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [showCreateMapModal, setShowCreateMapModal] = useState(false);
 
   const fetchMachines = async () => {
     
@@ -62,13 +79,13 @@ export default function MachinesPage() {
 
   useEffect(() => {
     fetchMachines()
-  }, [isAuthenticated, accessToken])
+  }, [isAuthenticated, accessToken]);
 
   const filteredMachines = machines.filter(machine =>
     machine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     machine.machine_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     machine.address.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -185,30 +202,256 @@ export default function MachinesPage() {
     setShowEditMapModal(false)
   }
 
-  const handleDelete = async (machine: Machine) => {
-    if (!accessToken) return
+  const handleDeleteClick = (machine: Machine) => {
+    setMachineToDelete(machine);
+    setShowDeleteDialog(true);
+  };
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete machine "${machine.name}"?\n\nThis action cannot be undone.`
-    )
-
-    if (!confirmed) return
+  const handleDeleteConfirm = async () => {
+    if (!accessToken || !machineToDelete) return;
 
     try {
-      setDeletingMachine(machine.machine_id)
-      await machinesApi.deleteMachine(accessToken, machine.machine_id)
+      setDeletingMachine(machineToDelete.machine_id);
+      const response = await machinesApi.deleteMachine(accessToken, machineToDelete.machine_id);
       
-      // Remove from local state
-      setMachines(prev => prev.filter(m => m.machine_id !== machine.machine_id))
+      // Show success toast
+      toast({
+        title: "Success",
+        description: response.message || "Machine deleted successfully",
+        variant: "default"
+      });
       
-      console.log(`Machine ${machine.machine_id} deleted successfully`)
+      // Refresh machines list
+      await fetchMachines();
+      
+      // Close dialog
+      setShowDeleteDialog(false);
+      setMachineToDelete(null);
+      
     } catch (err) {
-      console.error('Error deleting machine:', err)
-      alert('Failed to delete machine. Please try again.')
+      console.error('Error deleting machine:', err);
+      toast({
+        title: "Error",
+        description: "Failed to delete machine. Please try again.",
+        variant: "destructive"
+      });
     } finally {
-      setDeletingMachine(null)
+      setDeletingMachine(null);
     }
-  }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteDialog(false);
+    setMachineToDelete(null);
+  };
+
+  // Create Machine handlers
+  const handleCreateClick = () => {
+    setCreateFormData({
+      machine_id: "",
+      name: "",
+      lat: "",
+      lng: "",
+      radius: "",
+      address: ""
+    });
+    setCreateError(null);
+    setShowCreateModal(true);
+  };
+
+  const handleCreateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setCreateFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const geocodeAddress = async (address: string) => {
+    if (!address.trim()) {
+      setCreateFormData(prev => ({
+        ...prev,
+        lat: "",
+        lng: ""
+      }));
+      return;
+    }
+
+    try {
+      setIsGeocoding(true);
+      setCreateError(null);
+
+      const improvedAddress = address
+        .replace(/\bdistrict\b/gi, '')
+        .replace(/\bward\b/gi, '')
+        .replace(/\bstreet\b/gi, '')
+        .replace(/\broad\b/gi, '')
+        .replace(/\bavenue\b/gi, '')
+        .trim();
+
+      const searchQueries = [
+        `${improvedAddress}, Ho Chi Minh City, Vietnam`,
+        `${address}, Ho Chi Minh City, Vietnam`,
+        `${improvedAddress}, Vietnam`,
+        address
+      ];
+
+      let found = false;
+      for (const query of searchQueries) {
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=vn&addressdetails=1`
+          );
+          
+          if (!response.ok) continue;
+
+          const data = await response.json();
+          
+          if (data && data.length > 0) {
+            const { lat, lon } = data[0];
+            setCreateFormData(prev => ({
+              ...prev,
+              lat: lat,
+              lng: lon
+            }));
+            found = true;
+            break;
+          }
+        } catch (err) {
+          continue;
+        }
+      }
+
+      if (!found) {
+        setCreateError('Address not found. Please try a more specific address or include "Ho Chi Minh City" in the address.');
+        setCreateFormData(prev => ({
+          ...prev,
+          lat: "",
+          lng: ""
+        }));
+      }
+    } catch (err) {
+      console.error('Geocoding error:', err);
+      setCreateError('Failed to get coordinates. Please check your internet connection and try again.');
+      setCreateFormData(prev => ({
+        ...prev,
+        lat: "",
+        lng: ""
+      }));
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  // Debounced geocoding for create form
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (createFormData.address.trim()) {
+        geocodeAddress(createFormData.address);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [createFormData.address]);
+
+  const handleCreateLocationSelect = (lat: number, lng: number, address: string) => {
+    setCreateFormData(prev => ({
+      ...prev,
+      lat: lat.toString(),
+      lng: lng.toString(),
+      address: address
+    }));
+    setShowCreateMapModal(false);
+    setCreateError(null);
+  };
+
+  const handleCreateMachine = async () => {
+    if (!accessToken) return;
+
+    // Validation
+    if (!createFormData.machine_id || !createFormData.name || !createFormData.radius || !createFormData.address) {
+      setCreateError('All required fields must be filled');
+      return;
+    }
+
+    if (!createFormData.lat || !createFormData.lng) {
+      setCreateError('Please wait for coordinates to be calculated from the address');
+      return;
+    }
+
+    const lat = parseFloat(createFormData.lat);
+    const lng = parseFloat(createFormData.lng);
+    const radius = parseFloat(createFormData.radius);
+
+    if (isNaN(lat) || isNaN(lng) || isNaN(radius)) {
+      setCreateError('Invalid coordinates or radius');
+      return;
+    }
+
+    if (radius <= 0) {
+      setCreateError('Radius must be greater than 0');
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      setCreateError(null);
+
+      const createData = {
+        machine_id: createFormData.machine_id,
+        name: createFormData.name,
+        lat: lat,
+        lng: lng,
+        radius: radius,
+        address: createFormData.address,
+        status: 'offline' as const,
+        last_known_lat: lat,
+        last_known_lng: lng
+      };
+
+      await machinesApi.createMachine(accessToken, createData);
+      
+      // Show success toast
+      toast({
+        title: "Success",
+        description: "Machine created successfully",
+        variant: "default"
+      });
+      
+      // Refresh machines list
+      await fetchMachines();
+      
+      // Close modal
+      setShowCreateModal(false);
+      setCreateFormData({
+        machine_id: "",
+        name: "",
+        lat: "",
+        lng: "",
+        radius: "",
+        address: ""
+      });
+      
+    } catch (err) {
+      console.error('Error creating machine:', err);
+      setCreateError('Failed to create machine. Please try again.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleCancelCreate = () => {
+    setShowCreateModal(false);
+    setCreateFormData({
+      machine_id: "",
+      name: "",
+      lat: "",
+      lng: "",
+      radius: "",
+      address: ""
+    });
+    setCreateError(null);
+  };
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -219,8 +462,9 @@ export default function MachinesPage() {
           </div>
           <Button 
             className="bg-primary hover:bg-primary/90 text-primary-foreground"
-            onClick={() => router.push('/dashboard/machines/create')}
+            onClick={handleCreateClick}
           >
+            <Plus className="h-4 w-4 mr-2" />
             Add Machine
           </Button>
         </div>
@@ -332,7 +576,7 @@ export default function MachinesPage() {
                                     Edit
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
-                                    onClick={() => handleDelete(machine)}
+                                    onClick={() => handleDeleteClick(machine)}
                                     className="cursor-pointer text-destructive focus:text-destructive"
                                     disabled={deletingMachine === machine.machine_id}
                                   >
@@ -486,6 +730,225 @@ export default function MachinesPage() {
                   variant="outline"
                   onClick={handleCancelEdit}
                   disabled={isUpdating}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-destructive" />
+                Delete Machine
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to delete machine <strong>"{machineToDelete?.name}"</strong>?
+              </p>
+              <p className="text-sm text-destructive font-medium">
+                This action cannot be undone.
+              </p>
+              
+              <div className="flex gap-3 pt-4">
+                <Button
+                  onClick={handleDeleteConfirm}
+                  disabled={deletingMachine === machineToDelete?.machine_id}
+                  variant="destructive"
+                  className="flex-1"
+                >
+                  {deletingMachine === machineToDelete?.machine_id ? 'Deleting...' : 'Delete'}
+                </Button>
+                <Button
+                  onClick={handleDeleteCancel}
+                  disabled={deletingMachine === machineToDelete?.machine_id}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Create Machine Modal */}
+        <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                Create New Machine
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {createError && (
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-destructive">
+                      <X className="h-4 w-4" />
+                      <span className="font-medium">Error</span>
+                    </div>
+                    {createError.includes('Address not found') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => geocodeAddress(createFormData.address)}
+                        disabled={isGeocoding}
+                        className="text-xs"
+                      >
+                        {isGeocoding ? 'Searching...' : 'Try Again'}
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-destructive text-sm mt-1">{createError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create_machine_id">Machine ID *</Label>
+                  <Input
+                    id="create_machine_id"
+                    name="machine_id"
+                    value={createFormData.machine_id}
+                    onChange={handleCreateInputChange}
+                    placeholder="e.g., KOFIX-MACHINE-001"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="create_name">Machine Name *</Label>
+                  <Input
+                    id="create_name"
+                    name="name"
+                    value={createFormData.name}
+                    onChange={handleCreateInputChange}
+                    placeholder="e.g., NIN-JA"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create_address">Address *</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="create_address"
+                      name="address"
+                      value={createFormData.address}
+                      onChange={handleCreateInputChange}
+                      placeholder="e.g., 778 Xo Viet Nghe Tinh, Binh Thanh, Ho Chi Minh City"
+                      required
+                    />
+                    {isGeocoding && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <Dialog open={showCreateMapModal} onOpenChange={setShowCreateMapModal}>
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="px-3"
+                        onClick={() => setShowCreateMapModal(true)}
+                      >
+                        <Map className="h-4 w-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <Map className="h-5 w-5" />
+                          Select Location
+                        </DialogTitle>
+                      </DialogHeader>
+                      <MapPicker
+                        onLocationSelect={handleCreateLocationSelect}
+                        onClose={() => setShowCreateMapModal(false)}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Type address or click the map icon to select location
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create_lat">Latitude</Label>
+                  <div className="relative">
+                    <Input
+                      id="create_lat"
+                      name="lat"
+                      type="text"
+                      value={createFormData.lat}
+                      readOnly
+                      className="bg-muted cursor-not-allowed"
+                      placeholder="Auto-calculated"
+                    />
+                    <MapPin className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="create_lng">Longitude</Label>
+                  <div className="relative">
+                    <Input
+                      id="create_lng"
+                      name="lng"
+                      type="text"
+                      value={createFormData.lng}
+                      readOnly
+                      className="bg-muted cursor-not-allowed"
+                      placeholder="Auto-calculated"
+                    />
+                    <MapPin className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="create_radius">Radius (meters) *</Label>
+                  <Input
+                    id="create_radius"
+                    name="radius"
+                    type="number"
+                    min="1"
+                    value={createFormData.radius}
+                    onChange={handleCreateInputChange}
+                    placeholder="e.g., 50"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <Button
+                  onClick={handleCreateMachine}
+                  disabled={isCreating}
+                  className="flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  {isCreating ? 'Creating...' : 'Create Machine'}
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={handleCancelCreate}
+                  disabled={isCreating}
                 >
                   Cancel
                 </Button>
