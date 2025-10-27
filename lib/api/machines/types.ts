@@ -29,10 +29,13 @@ export interface CreateMachineRequest {
 }
 
 export interface UpdateMachineRequest {
+  machine_id?: string;
   name?: string;
-  type?: string;
-  location?: string;
-  status?: 'running' | 'stopped' | 'maintenance';
+  lat?: number;
+  lng?: number;
+  radius?: number;
+  address?: string;
+  status?: 'active' | 'inactive' | 'maintenance' | 'offline';
 }
 
 export interface MachineFilters {
