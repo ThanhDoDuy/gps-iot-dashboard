@@ -70,7 +70,10 @@ export default function MachineDetailPage() {
     })
   }
 
-  const formatCoordinates = (lat: number, lng: number) => {
+  const formatCoordinates = (lat: number | undefined, lng: number | undefined) => {
+    if (lat === undefined || lng === undefined) {
+      return "N/A"
+    }
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
   }
 
@@ -80,8 +83,8 @@ export default function MachineDetailPage() {
     
     const currentLat = machine.lat
     const currentLng = machine.lng
-    const lastLat = machine.last_known_lat
-    const lastLng = machine.last_known_lng
+    const lastLat = machine.last_known_lat || machine.lat
+    const lastLng = machine.last_known_lng || machine.lng
     
     // Create a Google Maps URL that shows both locations
     const url = `https://www.google.com/maps/dir/${currentLat},${currentLng}/${lastLat},${lastLng}`
@@ -253,6 +256,11 @@ export default function MachineDetailPage() {
                 <p className="text-foreground font-mono text-sm">
                   {formatCoordinates(machine.last_known_lat, machine.last_known_lng)}
                 </p>
+                {(!machine.last_known_lat || !machine.last_known_lng) && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Same as origin setup coordinates
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Allowed Radius</label>

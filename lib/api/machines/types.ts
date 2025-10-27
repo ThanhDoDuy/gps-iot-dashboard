@@ -7,8 +7,8 @@ export interface Machine {
   address: string;
   lat: number;
   lng: number;
-  last_known_lat: number;
-  last_known_lng: number;
+  last_known_lat?: number;
+  last_known_lng?: number;
   last_location_check: string;
   radius: number;
   tenant_id: string;
@@ -23,6 +23,9 @@ export interface CreateMachineRequest {
   lng: number;
   radius: number;
   address: string;
+  status: 'active' | 'inactive' | 'maintenance' | 'offline';
+  last_known_lat?: number;
+  last_known_lng?: number;
 }
 
 export interface UpdateMachineRequest {

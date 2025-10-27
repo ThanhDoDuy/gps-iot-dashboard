@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { MapPicker } from "@/components/ui/map-picker"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { machinesApi } from "@/lib/api/machines"
 import { useAuthStore } from "@/lib/auth-store"
-import { ArrowLeft, Save, X, MapPin, Loader2 } from "lucide-react"
+import { ArrowLeft, Save, X, MapPin, Loader2, Map } from "lucide-react"
 
 export default function CreateMachinePage() {
   const router = useRouter()
@@ -17,6 +19,12 @@ export default function CreateMachinePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isGeocoding, setIsGeocoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showMapModal, setShowMapModal] = useState(false)
+  const [selectedLocation, setSelectedLocation] = useState<{
+    lat: number
+    lng: number
+    address: string
+  } | null>(null)
 
   const [formData, setFormData] = useState({
     machine_id: "",
@@ -49,42 +57,72 @@ export default function CreateMachinePage() {
       setIsGeocoding(true)
       setError(null)
 
-      // Sử dụng Nominatim (OpenStreetMap) API miễn phí
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
-      )
-      
-      if (!response.ok) {
-        throw new Error('Geocoding failed')
+      // Cải thiện địa chỉ để tăng khả năng tìm thấy
+      const improvedAddress = address
+        .replace(/\bdistrict\b/gi, '') // Remove "district" 
+        .replace(/\bward\b/gi, '') // Remove "ward"
+        .replace(/\bstreet\b/gi, '') // Remove "street"
+        .replace(/\broad\b/gi, '') // Remove "road"
+        .replace(/\bavenue\b/gi, '') // Remove "avenue"
+        .trim()
+
+      // Thử nhiều cách tìm kiếm
+      const searchQueries = [
+        `${improvedAddress}, Ho Chi Minh City, Vietnam`,
+        `${address}, Ho Chi Minh City, Vietnam`,
+        `${improvedAddress}, Vietnam`,
+        address
+      ]
+
+      let found = false
+      for (const query of searchQueries) {
+        try {
+          console.log(`🔍 Searching for: ${query}`)
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=vn&addressdetails=1`
+          );
+          
+          if (!response.ok) {
+            continue;
+          };
+
+          const data = await response.json();
+          
+          if (data && data.length > 0) {
+            const { lat, lon, display_name } = data[0];
+            console.log(`✅ Found coordinates for: ${display_name}`);
+            setFormData(prev => ({
+              ...prev,
+              lat: lat,
+              lng: lon
+            }))
+            found = true;
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ Search failed for: ${query}`, err);
+          continue;
+        }
       }
 
-      const data = await response.json()
-      
-      if (data && data.length > 0) {
-        const { lat, lon } = data[0]
-        setFormData(prev => ({
-          ...prev,
-          lat: lat,
-          lng: lon
-        }))
-      } else {
-        setError('Address not found. Please check the address and try again.')
+      if (!found) {
+        setError('Address not found. Please try a more specific address or include "Ho Chi Minh City" in the address.')
         setFormData(prev => ({
           ...prev,
           lat: "",
           lng: ""
-        }))
-      }
+        }));
+      };
     } catch (err) {
       console.error('Geocoding error:', err)
-      setError('Failed to get coordinates. Please check the address and try again.')
+      setError('Failed to get coordinates. Please check your internet connection and try again.')
       setFormData(prev => ({
         ...prev,
         lat: "",
         lng: ""
-      }))
+      }));
     } finally {
-      setIsGeocoding(false)
+      setIsGeocoding(false);
     }
   }
 
@@ -144,7 +182,10 @@ export default function CreateMachinePage() {
         lat: lat,
         lng: lng,
         radius: radius,
-        address: formData.address
+        address: formData.address,
+        status: 'offline' as const,
+        last_known_lat: lat,
+        last_known_lng: lng
       }
 
       console.log("Creating machine with data:", createData)
@@ -162,6 +203,18 @@ export default function CreateMachinePage() {
 
   const handleCancel = () => {
     router.push('/dashboard/machines')
+  }
+
+  const handleLocationSelect = (lat: number, lng: number, address: string) => {
+    setSelectedLocation({ lat, lng, address })
+    setFormData(prev => ({
+      ...prev,
+      lat: lat.toString(),
+      lng: lng.toString(),
+      address: address
+    }))
+    setShowMapModal(false)
+    setError(null)
   }
 
   return (
@@ -193,9 +246,23 @@ export default function CreateMachinePage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-destructive">
-                    <X className="h-4 w-4" />
-                    <span className="font-medium">Error</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-destructive">
+                      <X className="h-4 w-4" />
+                      <span className="font-medium">Error</span>
+                    </div>
+                    {error.includes('Address not found') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => geocodeAddress(formData.address)}
+                        disabled={isGeocoding}
+                        className="text-xs"
+                      >
+                        {isGeocoding ? 'Searching...' : 'Try Again'}
+                      </Button>
+                    )}
                   </div>
                   <p className="text-destructive text-sm mt-1">{error}</p>
                 </div>
@@ -229,24 +296,55 @@ export default function CreateMachinePage() {
 
               <div className="space-y-2">
                 <Label htmlFor="address">Address *</Label>
-                <div className="relative">
-                  <Input
-                    id="address"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    placeholder="e.g., 123 Nguyen Hue, District 1, Ho Chi Minh City"
-                    required
-                  />
-                  {isGeocoding && (
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="address"
+                      name="address"
+                      value={formData.address}
+                      onChange={handleInputChange}
+                      placeholder="e.g., 778 Xo Viet Nghe Tinh, Binh Thanh, Ho Chi Minh City"
+                      required
+                    />
+                    {isGeocoding && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <Dialog open={showMapModal} onOpenChange={setShowMapModal}>
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="px-3"
+                        onClick={() => setShowMapModal(true)}
+                      >
+                        <Map className="h-4 w-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <Map className="h-5 w-5" />
+                          Select Location
+                        </DialogTitle>
+                      </DialogHeader>
+                      <MapPicker
+                        onLocationSelect={handleLocationSelect}
+                        onClose={() => setShowMapModal(false)}
+                      />
+                    </DialogContent>
+                  </Dialog>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Coordinates will be automatically calculated from the address
-                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    Type address or click the map icon to select location
+                  </p>
+                  <p className="text-xs text-blue-600">
+                    💡 Tip: Use the map for more accurate location selection
+                  </p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -283,7 +381,7 @@ export default function CreateMachinePage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="radius">Radius (meters) *</Label>
+                  <Label htmlFor="radius">Allowed Radius (meters) *</Label>
                   <Input
                     id="radius"
                     name="radius"
