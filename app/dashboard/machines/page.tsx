@@ -20,6 +20,7 @@ export default function MachinesPage() {
   const [searchTerm, setSearchTerm] = useState("")
 
   const fetchMachines = async () => {
+    
     if (!isAuthenticated || !accessToken) {
       setIsLoading(false)
       return
@@ -29,11 +30,9 @@ export default function MachinesPage() {
       setIsLoading(true)
       setError(null)
       const response = await machinesApi.getMachines(accessToken)
-      console.log("Machines response:", response)
       setMachines(response.data)
     } catch (err) {
       setError('Failed to load machines')
-      console.error('Error fetching machines:', err)
     } finally {
       setIsLoading(false)
     }
@@ -83,7 +82,12 @@ export default function MachinesPage() {
             <h1 className="text-3xl font-bold text-foreground">Machines</h1>
             <p className="text-muted-foreground mt-1">Manage coffee machines and equipment</p>
           </div>
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">Add Machine</Button>
+          <Button 
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            onClick={() => router.push('/dashboard/machines/create')}
+          >
+            Add Machine
+          </Button>
         </div>
 
         <Card className="bg-card border-border">

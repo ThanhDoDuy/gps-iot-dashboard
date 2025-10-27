@@ -17,9 +17,12 @@ export interface Machine {
 }
 
 export interface CreateMachineRequest {
+  machine_id: string;
   name: string;
-  type: string;
-  location?: string;
+  lat: number;
+  lng: number;
+  radius: number;
+  address: string;
 }
 
 export interface UpdateMachineRequest {

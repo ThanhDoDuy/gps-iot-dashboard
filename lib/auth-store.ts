@@ -95,7 +95,6 @@ export const useAuthStore = create<AuthStore>()(
         const { refreshToken: currentRefreshToken } = get()
         
         if (!currentRefreshToken) {
-          console.log("🔄 No refresh token available")
           return false
         }
 
@@ -112,10 +111,8 @@ export const useAuthStore = create<AuthStore>()(
             error: null,
           })
 
-          console.log("🔄 Token refreshed successfully")
           return true
         } catch (error) {
-          console.log("🔄 Refresh token failed, logging out:", error)
           set({
             accessToken: null,
             refreshToken: null,
@@ -135,11 +132,9 @@ export const useAuthStore = create<AuthStore>()(
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
-        console.log('🔄 Auth store rehydrated:', state);
         
         // Fix inconsistency: if isAuthenticated is true but no accessToken, clear auth
         if (state && state.isAuthenticated && !state.accessToken) {
-          console.log('🔧 Fixing auth inconsistency: clearing authentication state');
           state.isAuthenticated = false;
           state.refreshToken = null;
         }

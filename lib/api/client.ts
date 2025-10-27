@@ -41,7 +41,9 @@ class ApiClient {
           message: 'An error occurred',
         }));
         
-        throw new Error(errorData.message || `HTTP ${response.status}`);
+        const error = new Error(errorData.message || `HTTP ${response.status}`);
+        (error as any).statusCode = response.status;
+        throw error;
       }
 
       return await response.json();
@@ -137,8 +139,15 @@ class ApiClient {
         },
       });
     } catch (error: any) {
+      console.log("🔍 API Error caught:", error.message, "Type:", typeof error.message, "Status:", error.statusCode);
+      
       // Check if it's a 401 error and we're in the browser
-      if (error.message?.includes('401') && typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && (
+        error.message?.includes('401') || 
+        error.message?.includes('HTTP 401') || 
+        error.message?.includes('Invalid or expired token') ||
+        error.statusCode === 401
+      )) {
         console.log("🔄 Got 401 error, attempting to refresh token...");
         
         // Import auth store dynamically to avoid circular dependency
@@ -146,30 +155,28 @@ class ApiClient {
         const refreshToken = useAuthStore.getState().refreshToken;
         
         if (refreshToken) {
-          const refreshSuccess = await useAuthStore.getState().refreshAccessToken();
-          
-          if (refreshSuccess) {
-            // Retry the original request with new token
-            const newAccessToken = useAuthStore.getState().accessToken;
-            if (newAccessToken) {
-              console.log("🔄 Retrying request with new token...");
-              // Use retryRequest to avoid infinite recursion
-              return await this.retryRequest<T>(endpoint, newAccessToken, options);
+          try {
+            const refreshSuccess = await useAuthStore.getState().refreshAccessToken();
+            
+            if (refreshSuccess) {
+              // Retry the original request with new token
+              const newAccessToken = useAuthStore.getState().accessToken;
+              if (newAccessToken) {
+                console.log("🔄 Retrying request with new token...");
+                // Use retryRequest to avoid infinite recursion
+                return await this.retryRequest<T>(endpoint, newAccessToken, options);
+              }
             }
-          } else {
-            // Refresh failed, redirect to login
-            console.log("🔄 Refresh token failed, redirecting to login...");
-            useAuthStore.getState().logout();
-            window.location.href = '/';
-            throw new Error('Authentication expired. Please login again.');
+          } catch (refreshError) {
+            console.log("🔄 Refresh token failed:", refreshError);
           }
-        } else {
-          // No refresh token, redirect to login
-          console.log("🔄 No refresh token available, redirecting to login...");
-          useAuthStore.getState().logout();
-          window.location.href = '/';
-          throw new Error('No refresh token available. Please login again.');
         }
+        
+        // If we get here, refresh failed or no refresh token
+        console.log("🔄 Refresh token failed, redirecting to login...");
+        useAuthStore.getState().logout();
+        window.location.href = '/';
+        throw new Error('Authentication expired. Please login again.');
       }
       
       // Re-throw the original error if it's not a 401 or if we're on server
