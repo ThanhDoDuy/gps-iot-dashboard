@@ -1,5 +1,5 @@
 export interface Role {
-  id: string;
+  role_id: string;
   name: string;
   tenant_id: string;
   description?: string;
@@ -8,7 +8,7 @@ export interface Role {
 }
 
 export interface Permission {
-  id: string;
+  permission_id: string;
   name: string;
   tenant_id: string;
   description?: string;
@@ -19,7 +19,9 @@ export interface Permission {
 }
 
 export interface RolePermission {
+  id: string;
   role_id: string;
+  tenant_id: string;
   permission_id: string;
   granted: boolean;
   created_at: string;

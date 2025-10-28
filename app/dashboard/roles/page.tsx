@@ -181,7 +181,7 @@ export default function RolesPage() {
                     </th>
                     {roles.map((role) => (
                       <th
-                        key={role.id}
+                        key={role.role_id}
                         className="text-center p-3 font-semibold text-foreground bg-muted text-sm min-w-32"
                       >
                         <div className="break-words">{role.name}</div>
@@ -191,7 +191,7 @@ export default function RolesPage() {
                 </thead>
                 <tbody>
                   {permissions.map((permission) => (
-                    <tr key={permission.id} className="border-b border-border hover:bg-muted/50">
+                    <tr key={permission.permission_id} className="border-b border-border hover:bg-muted/50">
                       <td className="p-3 font-medium text-foreground bg-muted/30 sticky left-0 z-10 min-w-48">
                         <div>
                           <div className="font-medium">{permission.name}</div>
@@ -201,11 +201,11 @@ export default function RolesPage() {
                         </div>
                       </td>
                       {roles.map((role) => (
-                        <td key={`${permission.id}-${role.id}`} className="text-center p-3">
+                        <td key={`${permission.permission_id}-${role.role_id}`} className="text-center p-3">
                           <input
                             type="checkbox"
-                            checked={matrix[permission.id]?.[role.id] || false}
-                            onChange={() => togglePermission(permission.id, role.id)}
+                            checked={matrix[permission.permission_id]?.[role.role_id] || false}
+                            onChange={() => togglePermission(permission.permission_id, role.role_id)}
                             className="w-5 h-5 cursor-pointer accent-accent"
                           />
                         </td>
