@@ -1,60 +1,99 @@
 import { apiClient } from '../client';
+import { ApiResponse } from '../types';
 import { 
   Role, 
-  CreateRoleRequest, 
-  UpdateRoleRequest, 
-  RoleFilters
+  Permission, 
+  RolesPermissionsResponse, 
+  UpdateRolePermissionRequest,
+  BulkUpdatePermissionsRequest 
 } from './types';
-import { PaginatedResponse, PaginationParams } from '../types';
 
-export class RolesApi {
-  async getRoles(
-    accessToken: string,
-    params?: PaginationParams & RoleFilters
-  ): Promise<PaginatedResponse<Role>> {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.sort) queryParams.append('sort', params.sort);
-    if (params?.order) queryParams.append('order', params.order);
-    if (params?.search) queryParams.append('search', params.search);
-    if (params?.permission) queryParams.append('permission', params.permission);
+export const rolesApi = {
+  async getRoles(accessToken: string): Promise<ApiResponse<Role[]>> {
+    return apiClient.authenticatedRequest<ApiResponse<Role[]>>('/roles', accessToken, {
+      method: 'GET',
+    });
+  },
 
-    const endpoint = `/roles${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    return apiClient.authenticatedRequest<PaginatedResponse<Role>>(endpoint, accessToken);
-  }
+  async getPermissions(accessToken: string): Promise<ApiResponse<Permission[]>> {
+    return apiClient.authenticatedRequest<ApiResponse<Permission[]>>('/permissions', accessToken, {
+      method: 'GET',
+    });
+  },
 
-  async getRole(accessToken: string, roleId: string): Promise<Role> {
-    return apiClient.authenticatedRequest<Role>(`/roles/${roleId}`, accessToken);
-  }
+  async getRolesPermissions(accessToken: string): Promise<ApiResponse<RolesPermissionsResponse>> {
+    return apiClient.authenticatedRequest<ApiResponse<RolesPermissionsResponse>>('/roles-permissions', accessToken, {
+      method: 'GET',
+    });
+  },
 
-  async createRole(accessToken: string, roleData: CreateRoleRequest): Promise<Role> {
-    return apiClient.authenticatedRequest<Role>('/roles', accessToken, {
+  async updateRolePermission(
+    accessToken: string, 
+    roleId: string, 
+    permissionId: string, 
+    granted: boolean
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return apiClient.authenticatedRequest<ApiResponse<{ success: boolean }>>(
+      `/roles/${roleId}/permissions/${permissionId}`, 
+      accessToken, 
+      {
+        method: 'PUT',
+        body: JSON.stringify({ granted }),
+      }
+    );
+  },
+
+  async bulkUpdatePermissions(
+    accessToken: string, 
+    updates: UpdateRolePermissionRequest[]
+  ): Promise<ApiResponse<{ success: boolean; updated: number }>> {
+    return apiClient.authenticatedRequest<ApiResponse<{ success: boolean; updated: number }>>(
+      '/roles-permissions/bulk-update', 
+      accessToken, 
+      {
+        method: 'POST',
+        body: JSON.stringify({ updates }),
+      }
+    );
+  },
+
+  async createRole(accessToken: string, roleData: { name: string; description?: string }): Promise<ApiResponse<Role>> {
+    return apiClient.authenticatedRequest<ApiResponse<Role>>('/roles', accessToken, {
       method: 'POST',
       body: JSON.stringify(roleData),
     });
-  }
+  },
 
-  async updateRole(
-    accessToken: string, 
-    roleId: string, 
-    roleData: UpdateRoleRequest
-  ): Promise<Role> {
-    return apiClient.authenticatedRequest<Role>(`/roles/${roleId}`, accessToken, {
+  async updateRole(accessToken: string, roleId: string, roleData: { name: string; description?: string }): Promise<ApiResponse<Role>> {
+    return apiClient.authenticatedRequest<ApiResponse<Role>>(`/roles/${roleId}`, accessToken, {
       method: 'PUT',
       body: JSON.stringify(roleData),
     });
-  }
+  },
 
-  async deleteRole(accessToken: string, roleId: string): Promise<void> {
-    return apiClient.authenticatedRequest<void>(`/roles/${roleId}`, accessToken, {
+  async deleteRole(accessToken: string, roleId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return apiClient.authenticatedRequest<ApiResponse<{ success: boolean }>>(`/roles/${roleId}`, accessToken, {
       method: 'DELETE',
     });
-  }
+  },
 
-  async getAvailablePermissions(accessToken: string): Promise<string[]> {
-    return apiClient.authenticatedRequest<string[]>('/roles/permissions', accessToken);
-  }
-}
+  async createPermission(accessToken: string, permissionData: { name: string; description?: string; resource: string; action: string }): Promise<ApiResponse<Permission>> {
+    return apiClient.authenticatedRequest<ApiResponse<Permission>>('/permissions', accessToken, {
+      method: 'POST',
+      body: JSON.stringify(permissionData),
+    });
+  },
 
-export const rolesApi = new RolesApi();
+  async updatePermission(accessToken: string, permissionId: string, permissionData: { name: string; description?: string; resource: string; action: string }): Promise<ApiResponse<Permission>> {
+    return apiClient.authenticatedRequest<ApiResponse<Permission>>(`/permissions/${permissionId}`, accessToken, {
+      method: 'PUT',
+      body: JSON.stringify(permissionData),
+    });
+  },
+
+  async deletePermission(accessToken: string, permissionId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return apiClient.authenticatedRequest<ApiResponse<{ success: boolean }>>(`/permissions/${permissionId}`, accessToken, {
+      method: 'DELETE',
+    });
+  },
+};

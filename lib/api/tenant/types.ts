@@ -10,6 +10,11 @@ export interface Tenant {
   created_at: string;
   updated_at?: string;
   settings?: TenantSettings;
+  statistics: {
+    totalUsers: number;
+    totalDevices: number;
+    totalMachines: number;
+  }
 }
 
 export interface TenantSettings {

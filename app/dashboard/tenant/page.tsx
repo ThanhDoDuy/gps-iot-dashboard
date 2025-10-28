@@ -9,14 +9,12 @@ import { useAuthStore } from "@/lib/auth-store"
 import { Tenant } from "@/lib/api/tenant/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiKeyDisplay } from "@/components/ui/api-key-display"
-import { machinesApi } from "@/lib/api/machines"
 
 export default function TenantPage() {
   const { accessToken, isAuthenticated } = useAuthStore();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [machinesCount, setMachinesCount] = useState<number>(0);
 
   const fetchTenant = async () => {
 
@@ -38,14 +36,6 @@ export default function TenantPage() {
       const resBody = await tenantApi.getCurrentTenant(accessToken);
       setTenant(resBody.data);
 
-      // Fetch machines count
-      try {
-        const machinesResponse = await machinesApi.getMachines(accessToken);
-        setMachinesCount(machinesResponse.total || 0);
-      } catch (machinesErr) {
-        console.log("Failed to fetch machines count:", machinesErr);
-        setMachinesCount(0);
-      }
     } catch (err) {
       setError('Failed to load tenant information');
       console.error('Error fetching tenant:', err);
@@ -199,15 +189,15 @@ export default function TenantPage() {
                 <>
                   <div>
                     <p className="text-sm text-muted-foreground">Totals Users</p>
-                    <p className="text-2xl font-bold text-foreground capitalize">N/A</p>
+                    <p className="text-2xl font-bold text-foreground capitalize">{tenant.statistics.totalUsers}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Totals Devices</p>
-                    <p className="text-2xl font-bold text-foreground capitalize">N/A</p>
+                    <p className="text-2xl font-bold text-foreground capitalize">{tenant.statistics.totalDevices}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Totals Machines</p>
-                    <p className="text-2xl font-bold text-foreground">{machinesCount}</p>
+                    <p className="text-2xl font-bold text-foreground">{tenant.statistics.totalMachines}</p>
                   </div>
                 </>
               ) : (

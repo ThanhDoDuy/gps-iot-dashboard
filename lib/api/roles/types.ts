@@ -1,26 +1,49 @@
-// Roles module types
 export interface Role {
   id: string;
   name: string;
+  tenant_id: string;
   description?: string;
-  permissions: string[];
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface CreateRoleRequest {
+export interface Permission {
+  id: string;
   name: string;
+  tenant_id: string;
   description?: string;
-  permissions: string[];
+  resource: string;
+  action: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface UpdateRoleRequest {
-  name?: string;
-  description?: string;
-  permissions?: string[];
+export interface RolePermission {
+  role_id: string;
+  permission_id: string;
+  granted: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface RoleFilters {
-  search?: string;
-  permission?: string;
+export interface PermissionMatrix {
+  [permissionId: string]: {
+    [roleId: string]: boolean;
+  };
+}
+
+export interface RolesPermissionsResponse {
+  roles: Role[];
+  permissions: Permission[];
+  matrix: PermissionMatrix;
+}
+
+export interface UpdateRolePermissionRequest {
+  role_id: string;
+  permission_id: string;
+  granted: boolean;
+}
+
+export interface BulkUpdatePermissionsRequest {
+  updates: UpdateRolePermissionRequest[];
 }
