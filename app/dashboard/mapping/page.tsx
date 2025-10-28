@@ -1,64 +1,254 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { DashboardLayout } from "@/components/dashboard-layout"
-
-// Sample data for devices and machines
-const devices = [
-  { id: "D001", name: "Device 001", location: "Floor 1", machineId: "M001" },
-  { id: "D002", name: "Device 002", location: "Floor 1", machineId: "M002" },
-  { id: "D003", name: "Device 003", location: "Floor 2", machineId: null },
-  { id: "D004", name: "Device 004", location: "Floor 2", machineId: null },
-  { id: "D005", name: "Device 005", location: "Floor 3", machineId: "M003" },
-]
-
-const machines = [
-  { id: "M001", name: "Machine A", location: "Floor 1", deviceId: "D001" },
-  { id: "M002", name: "Machine B", location: "Floor 1", deviceId: "D002" },
-  { id: "M003", name: "Machine C", location: "Floor 3", deviceId: "D005" },
-  { id: "M004", name: "Machine D", location: "Floor 2", deviceId: null },
-]
+import { useAuthStore } from "@/lib/auth-store"
+import { devicesApi } from "@/lib/api/devices/api"
+import { machinesApi } from "@/lib/api/machines/api"
+import { Device } from "@/lib/api/devices/types"
+import { Machine } from "@/lib/api/machines/types"
+import { useToast } from "@/hooks/use-toast"
+import { Loader2 } from "lucide-react"
 
 export default function MappingPage() {
-  const [linkedPairs, setLinkedPairs] = useState(
-    devices.reduce(
-      (acc, device) => {
-        if (device.machineId) {
-          acc[device.id] = device.machineId
-        }
-        return acc
-      },
-      {} as Record<string, string>,
-    ),
-  )
-
+  const { accessToken, isAuthenticated } = useAuthStore()
+  const { toast } = useToast()
+  
+  // State for data
+  const [devices, setDevices] = useState<Device[]>([])
+  const [machines, setMachines] = useState<Machine[]>([])
+  const [unlinkedDevices, setUnlinkedDevices] = useState<Device[]>([])
+  const [unlinkedMachines, setUnlinkedMachines] = useState<Machine[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  
+  // State for device addresses
+  const [deviceAddresses, setDeviceAddresses] = useState<Record<string, string>>({})
+  const [isReverseGeocoding, setIsReverseGeocoding] = useState<Record<string, boolean>>({})
+  const geocodedDevices = useRef<Set<string>>(new Set())
+  
+  // State for linking
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null)
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null)
+  const [isLinking, setIsLinking] = useState(false)
+  const [isUnlinking, setIsUnlinking] = useState<string | null>(null)
 
-  const handleLink = () => {
-    if (selectedDevice && selectedMachine) {
-      setLinkedPairs((prev) => ({
-        ...prev,
-        [selectedDevice]: selectedMachine,
-      }))
-      setSelectedDevice(null)
-      setSelectedMachine(null)
+  // Fetch data from API
+  const fetchDevices = async () => {
+    if (!isAuthenticated || !accessToken) {
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      const response = await devicesApi.getDevices(accessToken);
+      setDevices(response.data);
+    } catch (err) {
+      console.error('Failed to load devices:', err);
+      setError('Failed to load devices');
     }
   }
 
-  const handleUnlink = (deviceId: string) => {
-    setLinkedPairs((prev) => {
-      const newPairs = { ...prev }
-      delete newPairs[deviceId]
-      return newPairs
-    })
+  const fetchMachines = async () => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
+
+    try {
+      const response = await machinesApi.getMachines(accessToken)
+      setMachines(response.data)
+    } catch (err) {
+      console.error('Failed to load machines:', err)
+      setError('Failed to load machines')
+    }
   }
 
-  const unlinkedDevices = devices.filter((d) => !linkedPairs[d.id])
-  const unlinkedMachines = machines.filter((m) => !Object.values(linkedPairs).includes(m.id))
-  const linkedDevices = devices.filter((d) => linkedPairs[d.id])
+  const fetchUnlinkedDevices = async () => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
+
+    try {
+      const response = await devicesApi.getUnlinkedDevices(accessToken)
+      setUnlinkedDevices(response.data)
+    } catch (err) {
+      console.error('Failed to load unlinked devices:', err)
+      setError('Failed to load unlinked devices')
+    }
+  }
+
+  const fetchUnlinkedMachines = async () => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
+
+    try {
+      const response = await machinesApi.getUnlinkedMachine(accessToken);
+      setUnlinkedMachines(response.data)
+    } catch (err) {
+      console.error('Failed to load unlinked machines:', err)
+      setError('Failed to load unlinked machines')
+    }
+  }
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    // Clear geocoded devices when fetching new data
+    geocodedDevices.current.clear();
+    setDeviceAddresses({});
+    setIsReverseGeocoding({});
+    await Promise.all([
+      fetchDevices(), 
+      fetchMachines(), 
+      fetchUnlinkedDevices(), 
+      fetchUnlinkedMachines()
+    ]);
+    setIsLoading(false);
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [isAuthenticated, accessToken])
+
+  // Reverse geocoding function for device locations
+  const reverseGeocode = useCallback(async (deviceId: string, lat: number, lng: number) => {
+    setIsReverseGeocoding(prev => ({ ...prev, [deviceId]: true }))
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+      )
+      const data = await response.json()
+      if (data && data.display_name) {
+        setDeviceAddresses(prev => ({ ...prev, [deviceId]: data.display_name }))
+      } else {
+        setDeviceAddresses(prev => ({ ...prev, [deviceId]: "Address not found" }))
+      }
+      // Mark as geocoded
+      geocodedDevices.current.add(deviceId)
+    } catch (error) {
+      console.error("Error during reverse geocoding:", error)
+      setDeviceAddresses(prev => ({ ...prev, [deviceId]: "Error fetching address" }))
+      // Mark as geocoded even if failed to avoid retry
+      geocodedDevices.current.add(deviceId)
+    } finally {
+      setIsReverseGeocoding(prev => ({ ...prev, [deviceId]: false }))
+    }
+  }, [])
+
+
+  // Handle device-machine linking
+  const handleLink = async () => {
+    if (!selectedDevice || !selectedMachine || !accessToken) return
+
+    setIsLinking(true)
+    try {
+      // Link device to machine using device ID and machine ID
+      await devicesApi.linkToMachine(accessToken, selectedDevice, {
+        machine_id: selectedMachine
+      })
+
+      // Refresh data
+      await Promise.all([
+        fetchDevices(),
+        fetchUnlinkedDevices(),
+        fetchUnlinkedMachines()
+      ])
+      
+      setSelectedDevice(null)
+      setSelectedMachine(null)
+      toast({
+        title: "Success",
+        description: "Device linked to machine successfully",
+      })
+    } catch (err) {
+      console.error('Failed to link device:', err)
+      toast({
+        title: "Error",
+        description: "Failed to link device to machine",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLinking(false)
+    }
+  }
+
+  const handleUnlink = async (deviceId: string) => {
+    if (!accessToken) return
+
+    setIsUnlinking(deviceId);
+    try {
+      // Unlink device from machine using dedicated API
+      await devicesApi.unlinkFromMachine(accessToken, deviceId)
+
+      // Refresh data
+      await Promise.all([
+        fetchDevices(),
+        fetchUnlinkedDevices(),
+        fetchUnlinkedMachines()
+      ]);
+      
+      toast({
+        title: "Success",
+        description: "Device unlinked from machine successfully",
+      })
+    } catch (err) {
+      console.error('Failed to unlink device:', err)
+      toast({
+        title: "Error",
+        description: "Failed to unlink device from machine",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUnlinking(null)
+    }
+  }
+
+  // Use pre-filtered data from API with memoization
+  const linkedDevices = useMemo(() => 
+    devices.filter((d) => d.machine_id), 
+    [devices]
+  );
+
+  // Reverse geocode device locations when devices are loaded
+  useEffect(() => {
+    linkedDevices.forEach(device => {
+      if (device.latest_location?.latitude && device.latest_location?.longitude) {
+        // Only geocode if we haven't already done it
+        if (!geocodedDevices.current.has(device.device_id) && !isReverseGeocoding[device.device_id]) {
+          reverseGeocode(device.device_id, device.latest_location.latitude, device.latest_location.longitude)
+        }
+      }
+    })
+  }, [linkedDevices, reverseGeocode, isReverseGeocoding])
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="text-muted-foreground mt-2">Loading devices and machines...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-destructive mb-4">{error}</p>
+            <Button onClick={fetchData}>Retry</Button>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout>
@@ -80,34 +270,50 @@ export default function MappingPage() {
                 {linkedDevices.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No linked pairs yet</p>
                 ) : (
-                  linkedDevices.map((device) => (
-                    <div
-                      key={device.id}
-                      className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
-                    >
-                      <div className="flex-1">
-                        <p className="font-medium text-foreground">{device.name}</p>
-                        <p className="text-xs text-muted-foreground">{device.location}</p>
-                      </div>
-                      <div className="px-3 text-muted-foreground">↔</div>
-                      <div className="flex-1 text-right">
-                        <p className="font-medium text-foreground">
-                          {machines.find((m) => m.id === linkedPairs[device.id])?.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {machines.find((m) => m.id === linkedPairs[device.id])?.location}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleUnlink(device.id)}
-                        className="ml-4 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  linkedDevices.map((device) => {
+                    const linkedMachine = machines.find((m) => m.machine_id === device.machine_id)
+                    return (
+                      <div
+                        key={device.device_id}
+                        className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border"
                       >
-                        Unlink
-                      </Button>
-                    </div>
-                  ))
+                        <div className="flex-1">
+                          <p className="font-medium text-foreground">{device.model}</p>
+                          <p className="text-xs text-muted-foreground">ID: {device.device_id}</p>
+                          <div className="mt-1">
+                            {isReverseGeocoding[device.device_id] ? (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                <span>Fetching location...</span>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">
+                                📍 {deviceAddresses[device.device_id] || "Location not available"}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="px-3 text-muted-foreground">↔</div>
+                        <div className="flex-1 text-right">
+                          <p className="font-medium text-foreground">
+                            {linkedMachine?.name || 'Unknown Machine'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {linkedMachine?.address || 'Unknown Location'}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleUnlink(device.device_id)}
+                          disabled={isUnlinking === device.device_id}
+                          className="ml-4 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          {isUnlinking === device.device_id ? 'Unlinking...' : 'Unlink'}
+                        </Button>
+                      </div>
+                    )
+                  })
                 )}
               </div>
             </CardContent>
@@ -129,8 +335,8 @@ export default function MappingPage() {
                 >
                   <option value="">Choose a device...</option>
                   {unlinkedDevices.map((device) => (
-                    <option key={device.id} value={device.id}>
-                      {device.name} ({device.location})
+                    <option key={device.device_id} value={device.device_id}>
+                      {device.model} (ID: {device.device_id})
                     </option>
                   ))}
                 </select>
@@ -145,8 +351,8 @@ export default function MappingPage() {
                 >
                   <option value="">Choose a machine...</option>
                   {unlinkedMachines.map((machine) => (
-                    <option key={machine.id} value={machine.id}>
-                      {machine.name} ({machine.location})
+                    <option key={machine.machine_id} value={machine.machine_id}>
+                      {machine.name} ({machine.address})
                     </option>
                   ))}
                 </select>
@@ -154,10 +360,10 @@ export default function MappingPage() {
 
               <Button
                 onClick={handleLink}
-                disabled={!selectedDevice || !selectedMachine}
+                disabled={!selectedDevice || !selectedMachine || isLinking}
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"
               >
-                Link Device to Machine
+                {isLinking ? 'Linking...' : 'Link Device to Machine'}
               </Button>
             </CardContent>
           </Card>
@@ -176,9 +382,9 @@ export default function MappingPage() {
                   <p className="text-muted-foreground text-sm">All devices are linked</p>
                 ) : (
                   unlinkedDevices.map((device) => (
-                    <div key={device.id} className="p-2 bg-muted rounded text-sm">
-                      <p className="font-medium text-foreground">{device.name}</p>
-                      <p className="text-xs text-muted-foreground">{device.location}</p>
+                    <div key={device.device_id} className="p-2 bg-muted rounded text-sm">
+                      <p className="font-medium text-foreground">{device.model}</p>
+                      <p className="text-xs text-muted-foreground">ID: {device.device_id}</p>
                     </div>
                   ))
                 )}
@@ -197,9 +403,9 @@ export default function MappingPage() {
                   <p className="text-muted-foreground text-sm">All machines are linked</p>
                 ) : (
                   unlinkedMachines.map((machine) => (
-                    <div key={machine.id} className="p-2 bg-muted rounded text-sm">
+                    <div key={machine.machine_id} className="p-2 bg-muted rounded text-sm">
                       <p className="font-medium text-foreground">{machine.name}</p>
-                      <p className="text-xs text-muted-foreground">{machine.location}</p>
+                      <p className="text-xs text-muted-foreground">{machine.address}</p>
                     </div>
                   ))
                 )}

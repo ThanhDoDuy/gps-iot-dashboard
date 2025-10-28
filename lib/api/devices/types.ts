@@ -14,30 +14,34 @@ export interface Device {
     timestamp: string;
     source: string;
   };
-}
+};
 
 export interface CreateDeviceRequest {
   device_id: string;
   model: string;
   status: 'active' | 'inactive' | 'maintenance' | 'offline';
   machine_id?: string;
-}
+};
 
 export interface UpdateDeviceRequest {
   device_id?: string;
   model?: string;
   status?: 'active' | 'inactive' | 'maintenance' | 'offline';
   machine_id?: string;
-}
+};
 
 export interface DeviceResponse {
   success: boolean;
   data: Device;
   message?: string;
-}
+};
 
 export interface DevicesResponse {
   success: boolean;
   data: Device[];
   message?: string;
-}
+};
+
+export interface LinkDeviceToMachine {
+  machine_id: string;
+};
