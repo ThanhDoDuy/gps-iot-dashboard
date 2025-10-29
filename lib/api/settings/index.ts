@@ -1,3 +1,2 @@
-// Settings module exports
-export * from './types';
-export * from './api';
+export { settingsApi } from './api'
+export type { RefreshMachineStatusResponse, CronStatsResponse, ClearStatsResponse } from './types'

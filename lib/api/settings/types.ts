@@ -1,61 +1,35 @@
-// Settings module types
-export interface SystemSettings {
-  general: {
-    siteName: string;
-    siteDescription: string;
-    timezone: string;
-    language: string;
-    theme: 'light' | 'dark' | 'auto';
-  };
-  security: {
-    sessionTimeout: number;
-    maxLoginAttempts: number;
-    passwordPolicy: {
-      minLength: number;
-      requireUppercase: boolean;
-      requireLowercase: boolean;
-      requireNumbers: boolean;
-      requireSpecialChars: boolean;
-    };
-  };
-  notifications: {
-    email: {
-      enabled: boolean;
-      smtpHost: string;
-      smtpPort: number;
-      smtpUser: string;
-      smtpPassword: string;
-      fromEmail: string;
-    };
-    sms: {
-      enabled: boolean;
-      provider: string;
-      apiKey: string;
-      fromNumber: string;
-    };
-    push: {
-      enabled: boolean;
-      firebaseConfig: {
-        apiKey: string;
-        authDomain: string;
-        projectId: string;
-        storageBucket: string;
-        messagingSenderId: string;
-        appId: string;
-      };
-    };
-  };
-  integrations: {
-    [key: string]: {
-      enabled: boolean;
-      config: Record<string, any>;
-    };
-  };
+export interface RefreshMachineStatusResponse {
+  success: boolean
+  message: string
+  updatedMachines?: number
+  timestamp?: string
 }
 
-export interface UpdateSystemSettingsRequest {
-  general?: Partial<SystemSettings['general']>;
-  security?: Partial<SystemSettings['security']>;
-  notifications?: Partial<SystemSettings['notifications']>;
-  integrations?: Partial<SystemSettings['integrations']>;
+export interface CronStatsResponse {
+  totalRuns: number
+  totalErrors: number
+  lastUpdateTime: string
+  recentUpdates: Array<{
+    tenantId: string
+    machineId: string
+    deviceId: string
+    distance: number
+    allowedRadius: number
+    status: string
+    reason: string
+    timestamp: string
+  }>
+}
+
+export interface ClearStatsResponse {
+  success: boolean;
+  message: string;
+  timestamp: string;
+  clearedBy: string;
+}
+
+export interface SettingsApiResponse<T = any> {
+  success: boolean
+  data: T
+  message?: string
 }

@@ -1,11 +1,140 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Input } from "@/components/ui/input"
+import { useAuthStore } from "@/lib/auth-store"
+import { useToast } from "@/hooks/use-toast"
+import { settingsApi } from "@/lib/api/settings"
+import { Loader2, RefreshCw, BarChart3, Trash2 } from "lucide-react"
 
 export default function SettingsPage() {
+  const { accessToken } = useAuthStore()
+  const { toast } = useToast()
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isLoadingStats, setIsLoadingStats] = useState(false)
+  const [isClearingStats, setIsClearingStats] = useState(false)
+
+  const handleRefreshMachineStatus = async () => {
+    if (!accessToken) {
+      toast({
+        title: "Error",
+        description: "No access token available",
+        variant: "destructive"
+      })
+      return;
+    };
+
+    try {
+      setIsRefreshing(true)
+      const response = await settingsApi.refreshMachineStatus(accessToken);
+      
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: response?.data.message || "Machine status updated successfully",
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: response?.data.message || "Failed to update machine status",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update machine status",
+        variant: "destructive"
+      })
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const handleGetCronStats = async () => {
+    if (!accessToken) {
+      toast({
+        title: "Error",
+        description: "No access token available",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setIsLoadingStats(true)
+      const response = await settingsApi.getCronStats(accessToken)
+      
+      console.log("Cron stats response:", response)
+      
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: `Stats loaded: ${response.data.totalRuns} runs, ${response.data.totalErrors} errors`,
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: response?.message || "Failed to load cron stats",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error("Error loading cron stats:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load cron stats",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoadingStats(false)
+    }
+  }
+
+  const handleClearCronStats = async () => {
+    if (!accessToken) {
+      toast({
+        title: "Error",
+        description: "No access token available",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setIsClearingStats(true)
+      const response = await settingsApi.clearCronStats(accessToken)
+      
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: response?.message || "Cron stats cleared successfully",
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: response?.message || "Failed to clear cron stats",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error("Error clearing cron stats:", error)
+      toast({
+        title: "Error",
+        description: "Failed to clear cron stats",
+        variant: "destructive"
+      })
+    } finally {
+      setIsClearingStats(false)
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -16,7 +145,7 @@ export default function SettingsPage() {
 
         <div className="space-y-6 max-w-2xl">
           {/* General Settings */}
-          <Card className="bg-card border-border">
+          {/* <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle>General Settings</CardTitle>
               <CardDescription>Basic system configuration</CardDescription>
@@ -32,10 +161,10 @@ export default function SettingsPage() {
               </div>
               <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">Save Changes</Button>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Security Settings */}
-          <Card className="bg-card border-border">
+          {/* <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle>Security</CardTitle>
               <CardDescription>Manage security and authentication</CardDescription>
@@ -58,10 +187,10 @@ export default function SettingsPage() {
                 <Input defaultValue="30 min" className="w-24 bg-input border-border" />
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Notification Settings */}
-          <Card className="bg-card border-border">
+          {/* <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle>Notifications</CardTitle>
               <CardDescription>Configure alert and notification preferences</CardDescription>
@@ -84,27 +213,73 @@ export default function SettingsPage() {
                 </div>
               ))}
             </CardContent>
-          </Card>
+          </Card> */}
 
-          {/* API Settings */}
+          {/* System Actions */}
           <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle>API Configuration</CardTitle>
-              <CardDescription>Manage API keys and integrations</CardDescription>
+              <CardTitle>System Actions</CardTitle>
+              <CardDescription>Perform system maintenance and updates</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground">API Key</label>
-                <div className="flex gap-2 mt-2">
-                  <Input value="sk_live_••••••••••••••••" readOnly className="bg-input border-border" />
-                  <Button variant="outline" className="text-foreground border-border bg-transparent">
-                    Copy
-                  </Button>
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <p className="font-medium text-foreground">Update Machine Status</p>
+                  <p className="text-sm text-muted-foreground">Update all machine statuses from latest data</p>
                 </div>
+                <Button 
+                  onClick={handleRefreshMachineStatus}
+                  disabled={isRefreshing}
+                  className="flex items-center gap-2"
+                >
+                  {isRefreshing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  {isRefreshing ? "Refreshing..." : "Refresh Status"}
+                </Button>
               </div>
-              <Button variant="outline" className="text-foreground border-border bg-transparent">
-                Regenerate Key
-              </Button>
+              
+              <div className="flex items-center justify-between py-2 border-t border-border">
+                <div>
+                  <p className="font-medium text-foreground">Cron Job Statistics</p>
+                  <p className="text-sm text-muted-foreground">View cron job execution statistics</p>
+                </div>
+                <Button 
+                  onClick={handleGetCronStats}
+                  disabled={isLoadingStats}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  {isLoadingStats ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <BarChart3 className="h-4 w-4" />
+                  )}
+                  {isLoadingStats ? "Loading..." : "View Stats"}
+                </Button>
+              </div>
+              
+              <div className="flex items-center justify-between py-2 border-t border-border">
+                <div>
+                  <p className="font-medium text-foreground">Clear Statistics</p>
+                  <p className="text-sm text-muted-foreground">Clear all cron job statistics data</p>
+                </div>
+                <Button 
+                  onClick={handleClearCronStats}
+                  disabled={isClearingStats}
+                  variant="destructive"
+                  className="flex items-center gap-2"
+                >
+                  {isClearingStats ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  {isClearingStats ? "Clearing..." : "Clear Stats"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

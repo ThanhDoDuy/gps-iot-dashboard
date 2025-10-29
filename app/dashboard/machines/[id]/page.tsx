@@ -35,6 +35,8 @@ export default function MachineDetailPage() {
       setError(null)
       const response = await machinesApi.getMachine(accessToken, machineId)
       console.log("Machine response:", response)
+      console.log("Machine device latest_location:", response.data?.device?.latest_location)
+      console.log("Machine origin coordinates:", { lat: response.data?.lat, lng: response.data?.lng })
       setMachine(response.data)
     } catch (err) {
       setError('Failed to load machine details')
@@ -48,10 +50,10 @@ export default function MachineDetailPage() {
     fetchMachine()
   }, [isAuthenticated, accessToken, machineId])
 
-  // Reverse geocoding for last known coordinates
+  // Reverse geocoding for latest location coordinates
   useEffect(() => {
     if (machine && machine.device?.latest_location?.latitude !== undefined && machine.device?.latest_location?.longitude !== undefined) {
-      reverseGeocode(machine.device?.latest_location?.latitude, machine.device?.latest_location?.longitude)
+      reverseGeocode(machine.device.latest_location.latitude, machine.device.latest_location.longitude)
     } else {
       setLastKnownAddress(null)
     }
@@ -132,11 +134,11 @@ export default function MachineDetailPage() {
     
     const currentLat = machine.lat;
     const currentLng = machine.lng;
-    const lastLat = machine.device?.latest_location?.latitude || machine.lat;
-    const lastLng = machine.device?.latest_location?.longitude || machine.lng;
+    const latestLat = machine.device?.latest_location?.latitude || machine.lat;
+    const latestLng = machine.device?.latest_location?.longitude || machine.lng;
     
     // Create a Google Maps URL that shows both locations
-    const url = `https://www.google.com/maps/dir/${currentLat},${currentLng}/${lastLat},${lastLng}`
+    const url = `https://www.google.com/maps/dir/${currentLat},${currentLng}/${latestLat},${latestLng}`
     window.open(url, '_blank')
   }
 
@@ -295,7 +297,7 @@ export default function MachineDetailPage() {
                 <p className="text-foreground font-medium">{machine.address}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Last Known Address</label>
+                <label className="text-sm font-medium text-muted-foreground">Latest Location Address</label>
                 {isReverseGeocoding ? (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -320,18 +322,35 @@ export default function MachineDetailPage() {
                   <p className="text-foreground">{machine.radius}m</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Far From Origin</label>
+                  <label className="text-sm font-medium text-muted-foreground">Distance From Origin</label>
                   <p className="text-foreground">
                     {machine.device?.latest_location?.latitude !== undefined && machine.device?.latest_location?.longitude !== undefined
-                      ? formatDistance(calculateDistance(machine.lat, machine.lng, machine.device?.latest_location?.latitude, machine.device?.latest_location?.longitude))
+                      ? (() => {
+                          const distance = calculateDistance(machine.lat, machine.lng, machine.device.latest_location.latitude, machine.device.latest_location.longitude)
+                          console.log("Distance calculation:", {
+                            origin: { lat: machine.lat, lng: machine.lng },
+                            latest: { lat: machine.device.latest_location.latitude, lng: machine.device.latest_location.longitude },
+                            distance: distance
+                          })
+                          return formatDistance(distance)
+                        })()
                       : "N/A"
                     }
                   </p>
                 </div>
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Last Location Check</label>
+                <label className="text-sm font-medium text-muted-foreground">Latest Location Timestamp</label>
                 <p className="text-foreground text-sm">{formatDate(machine.device?.latest_location?.timestamp || "N/A")}</p>
+              </div>
+              
+              {/* Debug coordinates */}
+              <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                <label className="text-sm font-medium text-muted-foreground">Debug Coordinates</label>
+                <div className="text-xs text-muted-foreground mt-1 space-y-1">
+                  <div>Origin: {machine.lat}, {machine.lng}</div>
+                  <div>Latest: {machine.device?.latest_location?.latitude || 'N/A'}, {machine.device?.latest_location?.longitude || 'N/A'}</div>
+                </div>
               </div>
               
               {/* Compare Button */}
@@ -418,7 +437,7 @@ export default function MachineDetailPage() {
                       <span className="text-sm">{formatDate(machine.linked_time || "N/A")}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Last Update:</span>
+                      <span className="text-sm text-muted-foreground">Latest Update:</span>
                       <span className="text-sm">{formatDate(machine?.device?.latest_location?.timestamp || "N/A")}</span>
                     </div>
                   </div>
