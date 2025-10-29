@@ -7,9 +7,6 @@ export interface Machine {
   address: string;
   lat: number;
   lng: number;
-  last_known_lat?: number;
-  last_known_lng?: number;
-  last_location_check: string;
   radius: number;
   linked_time?: string;
   tenant_id: string;
@@ -19,6 +16,13 @@ export interface Machine {
     model: string;
     status: string;
     device_id: string;
+    latest_location?: {
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+      timestamp: string;
+      source: string;
+    };
   };
 }
 

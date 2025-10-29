@@ -50,8 +50,8 @@ export default function MachineDetailPage() {
 
   // Reverse geocoding for last known coordinates
   useEffect(() => {
-    if (machine && machine.last_known_lat !== undefined && machine.last_known_lng !== undefined) {
-      reverseGeocode(machine.last_known_lat, machine.last_known_lng)
+    if (machine && machine.device?.latest_location?.latitude !== undefined && machine.device?.latest_location?.longitude !== undefined) {
+      reverseGeocode(machine.device?.latest_location?.latitude, machine.device?.latest_location?.longitude)
     } else {
       setLastKnownAddress(null)
     }
@@ -130,10 +130,10 @@ export default function MachineDetailPage() {
   const openInNewTab = () => {
     if (!machine) return
     
-    const currentLat = machine.lat
-    const currentLng = machine.lng
-    const lastLat = machine.last_known_lat || machine.lat
-    const lastLng = machine.last_known_lng || machine.lng
+    const currentLat = machine.lat;
+    const currentLng = machine.lng;
+    const lastLat = machine.device?.latest_location?.latitude || machine.lat;
+    const lastLng = machine.device?.latest_location?.longitude || machine.lng;
     
     // Create a Google Maps URL that shows both locations
     const url = `https://www.google.com/maps/dir/${currentLat},${currentLng}/${lastLat},${lastLng}`
@@ -306,7 +306,7 @@ export default function MachineDetailPage() {
                     <p className="text-foreground font-medium">
                       {lastKnownAddress || "N/A"}
                     </p>
-                    {(!machine.last_known_lat || !machine.last_known_lng) && (
+                    {(!machine.device?.latest_location?.latitude || !machine.device?.latest_location?.longitude) && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Same as origin setup coordinates
                       </p>
@@ -322,8 +322,8 @@ export default function MachineDetailPage() {
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Far From Origin</label>
                   <p className="text-foreground">
-                    {machine.last_known_lat !== undefined && machine.last_known_lng !== undefined
-                      ? formatDistance(calculateDistance(machine.lat, machine.lng, machine.last_known_lat, machine.last_known_lng))
+                    {machine.device?.latest_location?.latitude !== undefined && machine.device?.latest_location?.longitude !== undefined
+                      ? formatDistance(calculateDistance(machine.lat, machine.lng, machine.device?.latest_location?.latitude, machine.device?.latest_location?.longitude))
                       : "N/A"
                     }
                   </p>
@@ -331,7 +331,7 @@ export default function MachineDetailPage() {
               </div>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Last Location Check</label>
-                <p className="text-foreground text-sm">{formatDate(machine.last_location_check)}</p>
+                <p className="text-foreground text-sm">{formatDate(machine.device?.latest_location?.timestamp || "N/A")}</p>
               </div>
               
               {/* Compare Button */}
@@ -419,7 +419,7 @@ export default function MachineDetailPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Last Update:</span>
-                      <span className="text-sm">{formatDate(machine.last_location_check)}</span>
+                      <span className="text-sm">{formatDate(machine?.device?.latest_location?.timestamp || "N/A")}</span>
                     </div>
                   </div>
                 </div>
