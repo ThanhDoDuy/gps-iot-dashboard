@@ -21,6 +21,17 @@ export default function SettingsPage() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(false)
   const [isSavingConfig, setIsSavingConfig] = useState(false)
 
+  // Helpers to read/update specific config keys
+  const getConfigValue = (key: string) => loadedConfigs.find((c) => c.key === key)?.value
+  const setConfigValue = (key: string, value: any) =>
+    setLoadedConfigs((prev) => {
+      const idx = prev.findIndex((c) => c.key === key)
+      if (idx === -1) return [...prev, { key, value }]
+      const copy = [...prev]
+      copy[idx] = { ...copy[idx], value }
+      return copy
+    })
+
   const handleRefreshMachineStatus = async () => {
     if (!accessToken) {
       toast({
@@ -344,42 +355,40 @@ export default function SettingsPage() {
               <CardDescription>Setup LOCATION_STALE_MS for a tenant</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {loadedConfigs.length > 0 && (
-                <div className="text-sm space-y-2">
-                  {loadedConfigs.map((c, idx) => (
-                    <div key={c.key} className="grid grid-cols-1 md:grid-cols-3 items-center gap-3 border-b border-border pb-2">
-                      <span className="font-mono break-all">{c.key}</span>
-                      {typeof c.value === 'boolean' ? (
-                        <div className="md:col-span-2 flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(c.value)}
-                            onChange={(e) => setLoadedConfigs(prev => prev.map((item, i) => i === idx ? { ...item, value: e.target.checked } : item))}
-                            className="w-4 h-4"
-                          />
-                          <span className="text-muted-foreground">{c.value ? 'true' : 'false'}</span>
-                        </div>
-                      ) : (
-                        <Input
-                          type={c.key === 'LOCATION_STALE_MS' ? 'number' : 'text'}
-                          inputMode={c.key === 'LOCATION_STALE_MS' ? 'numeric' : undefined}
-                          value={String(c.value ?? '')}
-                          onChange={(e) => setLoadedConfigs(prev => prev.map((item, i) => {
-                            if (i !== idx) return item
-                            const raw = e.target.value
-                            if (c.key === 'LOCATION_STALE_MS') {
-                              const num = raw === '' ? '' : Number(raw)
-                              return { ...item, value: num }
-                            }
-                            return { ...item, value: raw }
-                          }))}
-                          className="md:col-span-2 bg-input border-border"
-                        />
-                      )}
-                    </div>
-                  ))}
+              <div className="text-sm space-y-4">
+                {/* LOCATION_STALE_MS */}
+                <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-3">
+                  <span className="font-mono">LOCATION_STALE_MS</span>
+                  <div className="md:col-span-2 flex items-center gap-2">
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      value={String(getConfigValue('LOCATION_STALE_MS') ?? '')}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        setConfigValue('LOCATION_STALE_MS', raw === '' ? '' : Number(raw))
+                      }}
+                      className="bg-input border-border"
+                      placeholder="e.g. 5"
+                    />
+                    <span className="text-muted-foreground">minutes</span>
+                  </div>
                 </div>
-              )}
+
+                {/* NOTIFICATION_ENABLED */}
+                <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-3">
+                  <span className="font-mono">NOTIFICATION_ENABLED</span>
+                  <div className="md:col-span-2 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(getConfigValue('NOTIFICATION_ENABLED'))}
+                      onChange={(e) => setConfigValue('NOTIFICATION_ENABLED', e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-muted-foreground">{Boolean(getConfigValue('NOTIFICATION_ENABLED')) ? 'true' : 'false'}</span>
+                  </div>
+                </div>
+              </div>
               <div className="flex gap-2">
                 <Button onClick={handleLoadTenantConfig} disabled={isLoadingConfig} variant="outline" className="flex items-center gap-2">
                   {isLoadingConfig ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
