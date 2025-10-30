@@ -16,6 +16,10 @@ export default function SettingsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [isClearingStats, setIsClearingStats] = useState(false)
+  const [staleMsInput, setStaleMsInput] = useState("")
+  const [loadedConfigs, setLoadedConfigs] = useState<{ key: string; value: any; updated_at?: string | null }[]>([])
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false)
+  const [isSavingConfig, setIsSavingConfig] = useState(false)
 
   const handleRefreshMachineStatus = async () => {
     if (!accessToken) {
@@ -132,6 +136,56 @@ export default function SettingsPage() {
       })
     } finally {
       setIsClearingStats(false)
+    }
+  }
+
+  const handleLoadTenantConfig = async () => {
+    if (!accessToken) {
+      toast({ title: "Error", description: "Missing access token", variant: "destructive" })
+      return
+    }
+    try {
+      setIsLoadingConfig(true)
+      const response = await settingsApi.getTenantConfigs(accessToken)
+      if (response.success) {
+        // Map backend fields { config_key, config_value, updated_at }
+        const mapped = (response.data || []).map((c: any) => ({ key: c.config_key, value: c.config_value, updated_at: c.updated_at }))
+        setLoadedConfigs(mapped)
+        const stale = mapped.find((c: any) => c.key === 'LOCATION_STALE_MS')
+        if (stale) setStaleMsInput(String(stale.value ?? ''))
+        toast({ title: "Loaded", description: `Loaded ${mapped.length} config(s)` })
+      } else {
+        toast({ title: "Error", description: response.message || 'Failed to load config', variant: 'destructive' })
+      }
+    } catch (e) {
+      toast({ title: "Error", description: 'Failed to load config', variant: 'destructive' })
+    } finally {
+      setIsLoadingConfig(false)
+    }
+  }
+
+  const handleSaveTenantConfig = async () => {
+    if (!accessToken) {
+      toast({ title: "Error", description: "Missing access token", variant: "destructive" })
+      return
+    }
+    try {
+      setIsSavingConfig(true)
+      // Build payload from edited configs
+      const payload = loadedConfigs.map((c) => ({
+        key: c.key,
+        value: c.key === 'LOCATION_STALE_MS' ? Number(c.value) : c.value,
+      }))
+      const response = await settingsApi.setTenantConfigs(accessToken, payload)
+      if (response.success) {
+        toast({ title: "Saved", description: `Updated ${payload.length} config(s)` })
+      } else {
+        toast({ title: "Error", description: response.message || 'Failed to save config', variant: 'destructive' })
+      }
+    } catch (e) {
+      toast({ title: "Error", description: 'Failed to save config', variant: 'destructive' })
+    } finally {
+      setIsSavingConfig(false)
     }
   }
 
@@ -278,6 +332,62 @@ export default function SettingsPage() {
                     <Trash2 className="h-4 w-4" />
                   )}
                   {isClearingStats ? "Clearing..." : "Clear Stats"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Tenant Config */}
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle>Tenant Config</CardTitle>
+              <CardDescription>Setup LOCATION_STALE_MS for a tenant</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {loadedConfigs.length > 0 && (
+                <div className="text-sm space-y-2">
+                  {loadedConfigs.map((c, idx) => (
+                    <div key={c.key} className="grid grid-cols-1 md:grid-cols-3 items-center gap-3 border-b border-border pb-2">
+                      <span className="font-mono break-all">{c.key}</span>
+                      {typeof c.value === 'boolean' ? (
+                        <div className="md:col-span-2 flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(c.value)}
+                            onChange={(e) => setLoadedConfigs(prev => prev.map((item, i) => i === idx ? { ...item, value: e.target.checked } : item))}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-muted-foreground">{c.value ? 'true' : 'false'}</span>
+                        </div>
+                      ) : (
+                        <Input
+                          type={c.key === 'LOCATION_STALE_MS' ? 'number' : 'text'}
+                          inputMode={c.key === 'LOCATION_STALE_MS' ? 'numeric' : undefined}
+                          value={String(c.value ?? '')}
+                          onChange={(e) => setLoadedConfigs(prev => prev.map((item, i) => {
+                            if (i !== idx) return item
+                            const raw = e.target.value
+                            if (c.key === 'LOCATION_STALE_MS') {
+                              const num = raw === '' ? '' : Number(raw)
+                              return { ...item, value: num }
+                            }
+                            return { ...item, value: raw }
+                          }))}
+                          className="md:col-span-2 bg-input border-border"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button onClick={handleLoadTenantConfig} disabled={isLoadingConfig} variant="outline" className="flex items-center gap-2">
+                  {isLoadingConfig ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Load Config
+                </Button>
+                <Button onClick={handleSaveTenantConfig} disabled={isSavingConfig} className="flex items-center gap-2">
+                  {isSavingConfig ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Save Config
                 </Button>
               </div>
             </CardContent>

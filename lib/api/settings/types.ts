@@ -33,3 +33,13 @@ export interface SettingsApiResponse<T = any> {
   data: T
   message?: string
 }
+
+export interface ConfigItem {
+  key: string
+  value: any
+  updated_at?: string | null
+}
+
+export type GetTenantConfigsResponse = ConfigItem[]
+export type SetTenantConfigItem = ConfigItem
+export type SetTenantConfigRequest = ConfigItem[]
