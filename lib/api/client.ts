@@ -133,14 +133,25 @@ class ApiClient {
     } catch (error: any) {
       console.log("🔍 API Error caught:", error.message, "Type:", typeof error.message, "Status:", error.statusCode);
       
-      // Check if it's a 401 error and we're in the browser
-      if (typeof window !== 'undefined' && (
+      // 403 Forbidden = Authorization issue (no permission) → throw error, let UI handle it
+      // Don't redirect because user is authenticated but lacks permission for this resource
+      if (typeof window !== 'undefined' && error.statusCode === 403) {
+        console.log("🔄 Got 403 Forbidden error - user lacks permission for this resource");
+        // Re-throw the error so UI can display appropriate message (e.g., "You don't have permission")
+        throw error;
+      }
+      
+      // 401 Unauthorized = Authentication issue (token expired/invalid) → try refresh token
+      const is401Error = typeof window !== 'undefined' && (
+        error.statusCode === 401 ||
         error.message?.includes('401') || 
         error.message?.includes('HTTP 401') || 
         error.message?.includes('Invalid or expired token') ||
-        error.statusCode === 401
-      )) {
-        console.log("🔄 Got 401 error, attempting to refresh token...");
+        error.message?.includes('TokenExpired')
+      );
+      
+      if (is401Error) {
+        console.log("🔄 Got 401 Unauthorized error, attempting to refresh token...");
         
         // Import auth store dynamically to avoid circular dependency
         const { useAuthStore } = await import('../auth-store');
@@ -154,24 +165,42 @@ class ApiClient {
               // Retry the original request with new token
               const newAccessToken = useAuthStore.getState().accessToken;
               if (newAccessToken) {
-                console.log("🔄 Retrying request with new token...");
-                // Use retryRequest to avoid infinite recursion
-                return await this.retryRequest<T>(endpoint, newAccessToken, options);
+                try {
+                  // Use retryRequest to avoid infinite recursion
+                  const retryResponse = await this.retryRequest<T>(endpoint, newAccessToken, options);
+                  return retryResponse;
+                } catch (retryError: any) {
+                  // If retry still fails with 401, redirect to login
+                  if (retryError.statusCode === 401) {
+                    // 🔄 Still unauthorized after retry, redirecting to login...
+                    useAuthStore.getState().logout();
+                    window.location.href = '/';
+                    throw new Error('Authentication expired. Please login again.');
+                  }
+                  // Other error, re-throw
+                  throw retryError;
+                }
               }
             }
           } catch (refreshError) {
-            console.log("🔄 Refresh token failed:", refreshError);
+            // Refresh failed, redirect to login
+            useAuthStore.getState().logout();
+            window.location.href = '/';
+            throw new Error('Authentication expired. Please login again.');
           }
         }
         
-        // If we get here, refresh failed or no refresh token
-        console.log("🔄 Refresh token failed, redirecting to login...");
-        useAuthStore.getState().logout();
-        window.location.href = '/';
-        throw new Error('Authentication expired. Please login again.');
+        // No refresh token available, redirect to login
+        if (!refreshToken) {
+          // 🔄 No refresh token available, redirecting to login...
+          const { useAuthStore } = await import('../auth-store');
+          useAuthStore.getState().logout();
+          window.location.href = '/';
+          throw new Error('Authentication expired. Please login again.');
+        }
       }
       
-      // Re-throw the original error if it's not a 401 or if we're on server
+      // Re-throw the original error if it's not a 401/403 or if we're on server
       throw error;
     }
   }

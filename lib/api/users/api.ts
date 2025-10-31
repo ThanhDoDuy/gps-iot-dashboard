@@ -83,6 +83,13 @@ export class UsersApi {
       body: JSON.stringify({ is_active: isActive }),
     });
   }
+
+  async assignRole(accessToken: string, userId: string, roleId: string): Promise<ApiResponse<User>> {
+    return apiClient.authenticatedRequest<ApiResponse<User>>(`/users/${userId}/assign-role`, accessToken, {
+      method: 'PUT',
+      body: JSON.stringify({ role_id: roleId }),
+    });
+  }
 }
 
 export const usersApi = new UsersApi();

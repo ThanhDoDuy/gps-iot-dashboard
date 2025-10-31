@@ -5,7 +5,8 @@ import {
   Permission, 
   RolesPermissionsResponse, 
   UpdateRolePermissionRequest,
-  BulkUpdatePermissionsRequest 
+  BulkUpdatePermissionsRequest,
+  CreateRoleRequest
 } from './types';
 
 export const rolesApi = {
@@ -93,6 +94,19 @@ export const rolesApi = {
 
   async deletePermission(accessToken: string, permissionId: string): Promise<ApiResponse<{ success: boolean }>> {
     return apiClient.authenticatedRequest<ApiResponse<{ success: boolean }>>(`/permissions/${permissionId}`, accessToken, {
+      method: 'DELETE',
+    });
+  },
+
+  async createRoleWithPermissions(accessToken: string, roleData: CreateRoleRequest): Promise<ApiResponse<Role>> {
+    return apiClient.authenticatedRequest<ApiResponse<Role>>('/roles', accessToken, {
+      method: 'POST',
+      body: JSON.stringify(roleData),
+    });
+  },
+
+  async deleteRoleById(accessToken: string, roleId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return apiClient.authenticatedRequest<ApiResponse<{ success: boolean }>>(`/roles/${roleId}`, accessToken, {
       method: 'DELETE',
     });
   },

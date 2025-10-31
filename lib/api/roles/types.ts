@@ -65,3 +65,9 @@ export interface UpdateRolePermissionRequest {
 export interface BulkUpdatePermissionsRequest {
   updates: UpdateRolePermissionRequest[];
 }
+
+export interface CreateRoleRequest {
+  role_id: string;
+  role_name: string;
+  permissions: string[]; // Array of permission IDs
+}
