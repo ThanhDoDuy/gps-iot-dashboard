@@ -4,6 +4,7 @@ export interface Machine {
   name: string;
   device_id: string;
   status: 'active' | 'inactive' | 'maintenance';
+  status_reason?: string; // Reason for inactive status
   address: string;
   lat: number;
   lng: number;

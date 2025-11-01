@@ -273,10 +273,16 @@ export default function MachineDetailPage() {
                 </div>
                 <div className="col-span-2">
                   <label className="text-sm font-medium text-muted-foreground">Status</label>
-                  <div className="mt-1">
+                  <div className="mt-1 space-y-2">
                     <Badge className={getStatusColor(machine.status)}>
                       {machine.status}
                     </Badge>
+                    {machine.status === 'inactive' && machine.status_reason && (
+                      <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
+                        <p className="text-sm font-medium text-red-800 mb-1">Status Reason:</p>
+                        <p className="text-sm text-red-700">{machine.status_reason}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

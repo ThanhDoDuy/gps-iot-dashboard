@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { DashboardLayout } from "@/components/dashboard-layout"
@@ -11,7 +11,7 @@ import { settingsApi } from "@/lib/api/settings"
 import { Loader2, RefreshCw, BarChart3, Trash2 } from "lucide-react"
 
 export default function SettingsPage() {
-  const { accessToken } = useAuthStore()
+  const { accessToken, isAuthenticated } = useAuthStore()
   const { toast } = useToast()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
@@ -199,6 +199,36 @@ export default function SettingsPage() {
       setIsSavingConfig(false)
     }
   }
+
+  // Auto-load configs when page loads
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
+    
+    const loadConfigs = async () => {
+      try {
+        setIsLoadingConfig(true)
+        const response = await settingsApi.getTenantConfigs(accessToken)
+        if (response.success) {
+          // Map backend fields { config_key, config_value, updated_at }
+          const mapped = (response.data || []).map((c: any) => ({ key: c.config_key, value: c.config_value, updated_at: c.updated_at }))
+          setLoadedConfigs(mapped)
+          const stale = mapped.find((c: any) => c.key === 'LOCATION_STALE_MS')
+          if (stale) setStaleMsInput(String(stale.value ?? ''))
+        } else {
+          toast({ title: "Error", description: response.message || 'Failed to load config', variant: 'destructive' })
+        }
+      } catch (e) {
+        console.error('Error loading config:', e)
+        toast({ title: "Error", description: 'Failed to load config', variant: 'destructive' })
+      } finally {
+        setIsLoadingConfig(false)
+      }
+    }
+
+    loadConfigs()
+  }, [isAuthenticated, accessToken, toast])
 
   return (
     <DashboardLayout>
