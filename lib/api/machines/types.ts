@@ -13,6 +13,8 @@ export interface Machine {
   tenant_id: string;
   created_at: string;
   updated_at: string;
+  last_known_lat?: number;
+  last_known_lng?: number;
   device?: {
     model: string;
     status: string;

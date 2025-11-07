@@ -280,7 +280,7 @@ export default function MachineDetailPage() {
                     {machine.status === 'inactive' && machine.status_reason && (
                       <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
                         <p className="text-sm font-medium text-red-800 mb-1">Status Reason:</p>
-                        <p className="text-sm text-red-700">{machine.status_reason}</p>
+                        <p className="text-sm text-red-700">{machine.status_reason  }</p>
                       </div>
                     )}
                   </div>

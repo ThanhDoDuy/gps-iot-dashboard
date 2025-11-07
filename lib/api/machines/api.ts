@@ -87,6 +87,28 @@ export class MachinesApi {
       method: 'DELETE',
     });
   }
+
+  async filterMachinesByLocation(
+    accessToken: string,
+    countryCode?: string,
+    cityCode?: string
+  ): Promise<{
+    success: boolean;
+    data: Machine[];
+    total: number;
+    filters: {
+      countryCode: string | null;
+      cityCode: string | null;
+    };
+    message?: string;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (countryCode) queryParams.append('countryCode', countryCode);
+    if (cityCode) queryParams.append('cityCode', cityCode);
+
+    const endpoint = `/machines/filter${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return apiClient.authenticatedRequest(endpoint, accessToken);
+  }
 }
 
 export const machinesApi = new MachinesApi();
