@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { Machine } from "@/lib/api/machines/types"
@@ -19,6 +19,10 @@ interface MachinesMapProps {
   machines: Machine[]
   height?: string
   onMachineSelect?: (machine: Machine) => void
+  onLocationSelect?: (lat: number, lng: number) => void
+  centerPoint?: { lat: number; lng: number } | null
+  radiusKm?: number
+  selectable?: boolean
 }
 
 // Component to handle map bounds fitting
@@ -41,8 +45,36 @@ function FitBounds({ machines }: { machines: Machine[] }) {
   return null
 }
 
-export function MachinesMap({ machines, height = "600px", onMachineSelect }: MachinesMapProps) {
-  if (machines.length === 0) {
+// Component to handle map click for location selection
+function MapClickHandler({ 
+  onLocationSelect, 
+  selectable 
+}: { 
+  onLocationSelect?: (lat: number, lng: number) => void
+  selectable?: boolean 
+}) {
+  useMapEvents({
+    click: (e) => {
+      if (selectable && onLocationSelect) {
+        onLocationSelect(e.latlng.lat, e.latlng.lng)
+      }
+    },
+  })
+  return null
+}
+
+export function MachinesMap({ 
+  machines, 
+  height = "600px", 
+  onMachineSelect,
+  onLocationSelect,
+  centerPoint,
+  radiusKm,
+  selectable = false
+}: MachinesMapProps) {
+  // If selectable mode, always show map even without machines
+  // Otherwise, show empty state if no machines
+  if (!selectable && machines.length === 0) {
     return (
       <div 
         className="flex items-center justify-center bg-muted rounded-lg border border-border"
@@ -56,23 +88,77 @@ export function MachinesMap({ machines, height = "600px", onMachineSelect }: Mac
     )
   }
 
-  // Calculate center from machines
-  const centerLat = machines.reduce((sum, m) => sum + (m.last_known_lat ?? m.lat), 0) / machines.length
-  const centerLng = machines.reduce((sum, m) => sum + (m.last_known_lng ?? m.lng), 0) / machines.length
+  // Calculate center from machines, centerPoint, or default location
+  let centerLat: number
+  let centerLng: number
+  
+  if (centerPoint) {
+    centerLat = centerPoint.lat
+    centerLng = centerPoint.lng
+  } else if (machines.length > 0) {
+    centerLat = machines.reduce((sum, m) => sum + (m.last_known_lat ?? m.lat), 0) / machines.length
+    centerLng = machines.reduce((sum, m) => sum + (m.last_known_lng ?? m.lng), 0) / machines.length
+  } else {
+    // Default center (Ho Chi Minh City, Vietnam)
+    centerLat = 10.8231
+    centerLng = 106.6297
+  }
 
   return (
     <div className="w-full rounded-lg overflow-hidden border border-border" style={{ height }}>
       <MapContainer
         center={[centerLat, centerLng]}
-        zoom={10}
+        zoom={selectable && machines.length === 0 ? 12 : 10}
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom={true}
       >
-        <FitBounds machines={machines} />
+        {machines.length > 0 && <FitBounds machines={machines} />}
+        <MapClickHandler onLocationSelect={onLocationSelect} selectable={selectable} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        {/* Center point marker and radius circle */}
+        {centerPoint && (
+          <>
+            <Marker
+              position={[centerPoint.lat, centerPoint.lng]}
+              icon={L.icon({
+                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png",
+                shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+              })}
+            >
+              <Popup>
+                <div className="p-2">
+                  <h3 className="font-semibold text-sm mb-1">Selected Location</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {centerPoint.lat.toFixed(6)}, {centerPoint.lng.toFixed(6)}
+                  </p>
+                  {radiusKm && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Radius: {radiusKm} km
+                    </p>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+            {radiusKm && (
+              <Circle
+                center={[centerPoint.lat, centerPoint.lng]}
+                radius={radiusKm * 1000} // Convert km to meters
+                pathOptions={{
+                  color: "#3b82f6",
+                  fillColor: "#3b82f6",
+                  fillOpacity: 0.2,
+                  weight: 2,
+                }}
+              />
+            )}
+          </>
+        )}
         {machines.map((machine) => {
           const lat = machine.last_known_lat ?? machine.lat
           const lng = machine.last_known_lng ?? machine.lng

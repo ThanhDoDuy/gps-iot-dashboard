@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const menuItems = [
-  { label: "Dashboard", href: "/dashboard", icon: "📊" },
   { label: "Tenant Info", href: "/dashboard/tenant", icon: "🏢" },
+  { label: "Dashboard", href: "/dashboard", icon: "📊" },
+  { label: "Radius Filter", href: "/dashboard/radius-filter", icon: "🎯" },
   { label: "Users", href: "/dashboard/users", icon: "👥" },
   { label: "Devices", href: "/dashboard/devices", icon: "📱" },
   { label: "Machines", href: "/dashboard/machines", icon: "☕" },

@@ -109,6 +109,37 @@ export class MachinesApi {
     const endpoint = `/machines/filter${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     return apiClient.authenticatedRequest(endpoint, accessToken);
   }
+
+  async filterMachinesByRadius(
+    accessToken: string,
+    countryCode: string,
+    cityCode: string,
+    centerLat: number,
+    centerLng: number,
+    radiusKm: number
+  ): Promise<{
+    success: boolean;
+    data: Machine[];
+    total: number;
+    filters: {
+      countryCode: string;
+      cityCode: string;
+      centerLat: number;
+      centerLng: number;
+      radiusKm: number;
+    };
+    message?: string;
+  }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('countryCode', countryCode);
+    queryParams.append('cityCode', cityCode);
+    queryParams.append('centerLat', centerLat.toString());
+    queryParams.append('centerLng', centerLng.toString());
+    queryParams.append('radiusKm', radiusKm.toString());
+
+    const endpoint = `/machines/filter-by-radius?${queryParams.toString()}`;
+    return apiClient.authenticatedRequest(endpoint, accessToken);
+  }
 }
 
 export const machinesApi = new MachinesApi();
