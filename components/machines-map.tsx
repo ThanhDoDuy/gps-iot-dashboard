@@ -33,8 +33,8 @@ function FitBounds({ machines }: { machines: Machine[] }) {
     if (machines.length > 0) {
       const bounds = L.latLngBounds(
         machines.map((machine) => {
-          const lat = machine.last_known_lat ?? machine.lat
-          const lng = machine.last_known_lng ?? machine.lng
+          const lat = machine.device?.latitude ?? machine.lat
+          const lng = machine.device?.longitude ?? machine.lng
           return [lat, lng] as [number, number]
         })
       )
@@ -96,8 +96,8 @@ export function MachinesMap({
     centerLat = centerPoint.lat
     centerLng = centerPoint.lng
   } else if (machines.length > 0) {
-    centerLat = machines.reduce((sum, m) => sum + (m.last_known_lat ?? m.lat), 0) / machines.length
-    centerLng = machines.reduce((sum, m) => sum + (m.last_known_lng ?? m.lng), 0) / machines.length
+    centerLat = machines.reduce((sum, m) => sum + (m.device?.latitude ?? m.lat), 0) / machines.length
+    centerLng = machines.reduce((sum, m) => sum + (m.device?.longitude ?? m.lng), 0) / machines.length
   } else {
     // Default center (Ho Chi Minh City, Vietnam)
     centerLat = 10.8231
@@ -160,8 +160,8 @@ export function MachinesMap({
           </>
         )}
         {machines.map((machine) => {
-          const lat = machine.last_known_lat ?? machine.lat
-          const lng = machine.last_known_lng ?? machine.lng
+          const lat = machine.device?.latitude ?? machine.lat
+          const lng = machine.device?.longitude ?? machine.lng
           const isActive = machine.status === "active"
           
           return (

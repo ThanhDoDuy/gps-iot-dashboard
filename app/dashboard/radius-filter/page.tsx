@@ -1,14 +1,22 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import dynamic from "next/dynamic"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/auth-store"
 import { machinesApi } from "@/lib/api/machines"
+import { locationsApi } from "@/lib/api/locations"
 import { Machine } from "@/lib/api/machines/types"
-import { MachinesMap } from "@/components/machines-map"
+import { Country, City } from "@/lib/api/locations/types"
+
+// Dynamic import for MachinesMap to avoid SSR issues with Leaflet
+const MachinesMap = dynamic(() => import("@/components/machines-map").then(mod => ({ default: mod.MachinesMap })), {
+  ssr: false,
+  loading: () => <div className="w-full h-[400px] flex items-center justify-center bg-gray-100 rounded-lg">Loading map...</div>
+})
 import {
   Select,
   SelectContent,
@@ -20,31 +28,17 @@ import { Loader2, MapPin, X, Search, Target } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-// Predefined country and city options
-const countries = [
-  { value: "vietnam", label: "Vietnam" },
-  { value: "thailand", label: "Thailand" },
-]
-
-const cities: Record<string, { value: string; label: string }[]> = {
-  vietnam: [
-    { value: "hcm", label: "Ho Chi Minh City" },
-    { value: "danang", label: "Da Nang" },
-    { value: "hanoi", label: "Hanoi" },
-  ],
-  thailand: [
-    { value: "bangkok", label: "Bangkok" },
-    { value: "pattaya", label: "Pattaya" },
-  ],
-}
 
 export default function RadiusFilterPage() {
   const { toast } = useToast()
   const { accessToken, isAuthenticated } = useAuthStore()
   const [machines, setMachines] = useState<Machine[]>([])
+  const [countries, setCountries] = useState<Country[]>([])
+  const [cities, setCities] = useState<Record<string, City[]>>({})
   const [isLoading, setIsLoading] = useState(false)
-  const [countryCode, setCountryCode] = useState<string>("vietnam")
-  const [cityCode, setCityCode] = useState<string>("hcm")
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true)
+  const [countryCode, setCountryCode] = useState<string>("")
+  const [cityCode, setCityCode] = useState<string>("")
   const [centerPoint, setCenterPoint] = useState<{ lat: number; lng: number } | null>(null)
   const [radiusKm, setRadiusKm] = useState<string>("5")
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null)
@@ -96,9 +90,102 @@ export default function RadiusFilterPage() {
     }
   }
 
+  // Fetch locations (countries and cities)
+  const fetchLocations = async () => {
+    if (!isAuthenticated || !accessToken) {
+      setIsLoadingLocations(false)
+      return
+    }
+
+    try {
+      setIsLoadingLocations(true)
+      
+      // Fetch all countries
+      const countriesResponse = await locationsApi.getCountries(accessToken)
+      const countriesData = countriesResponse.data || []
+      setCountries(countriesData)
+
+      // Set default country if available
+      if (countriesData.length > 0 && !countryCode) {
+        setCountryCode(countriesData[0].country_code)
+      }
+
+      // Fetch cities for each country
+      const citiesMap: Record<string, City[]> = {}
+      for (const country of countriesData) {
+        try {
+          const citiesResponse = await locationsApi.getCities(accessToken, country.country_code)
+          citiesMap[country.country_code] = citiesResponse.data || []
+        } catch (error) {
+          console.error(`Error fetching cities for ${country.country_code}:`, error)
+          citiesMap[country.country_code] = []
+        }
+      }
+      setCities(citiesMap)
+
+      // Set default city for default country
+      if (countriesData.length > 0 && !cityCode) {
+        const defaultCountryCode = countriesData[0].country_code
+        const defaultCities = citiesMap[defaultCountryCode] || []
+        if (defaultCities.length > 0) {
+          setCityCode(defaultCities[0].city_code)
+        }
+      }
+    } catch (error: any) {
+      console.error("Error fetching locations:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fetch locations",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingLocations(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchLocations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, isAuthenticated])
+
+  // Fetch cities when country changes
+  useEffect(() => {
+    if (countryCode && accessToken && isAuthenticated) {
+      const fetchCitiesForCountry = async () => {
+        try {
+          const citiesResponse = await locationsApi.getCities(accessToken, countryCode)
+          setCities(prev => ({
+            ...prev,
+            [countryCode]: citiesResponse.data || []
+          }))
+          
+          // Set first city as default if cityCode is empty
+          const newCities = citiesResponse.data || []
+          if (newCities.length > 0 && !cityCode) {
+            setCityCode(newCities[0].city_code)
+          } else if (newCities.length === 0) {
+            setCityCode("")
+          }
+        } catch (error) {
+          console.error(`Error fetching cities for ${countryCode}:`, error)
+        }
+      }
+      fetchCitiesForCountry()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryCode, accessToken, isAuthenticated])
+
   const handleClearFilters = () => {
-    setCountryCode("vietnam")
-    setCityCode("hcm")
+    // Reset to first country and city if available
+    if (countries.length > 0) {
+      const firstCountry = countries[0]
+      setCountryCode(firstCountry.country_code)
+      const firstCities = cities[firstCountry.country_code] || []
+      setCityCode(firstCities.length > 0 ? firstCities[0].city_code : "")
+    } else {
+      setCountryCode("")
+      setCityCode("")
+    }
     setCenterPoint(null)
     setRadiusKm("5")
     setMachines([])
@@ -156,13 +243,17 @@ export default function RadiusFilterPage() {
                       <SelectTrigger>
                         <SelectValue placeholder="Select country" />
                       </SelectTrigger>
-                      <SelectContent>
-                        {countries.map((country) => (
-                          <SelectItem key={country.value} value={country.value}>
-                            {country.label}
+                    <SelectContent>
+                      {isLoadingLocations ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : (
+                        countries.map((country) => (
+                          <SelectItem key={country.country_code} value={country.country_code}>
+                            {country.name}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
+                        ))
+                      )}
+                    </SelectContent>
                     </Select>
                     {countryCode && (
                       <Button
@@ -191,13 +282,19 @@ export default function RadiusFilterPage() {
                       <SelectTrigger>
                         <SelectValue placeholder={countryCode ? "Select city" : "Select country first"} />
                       </SelectTrigger>
-                      <SelectContent>
-                        {availableCities.map((city) => (
-                          <SelectItem key={city.value} value={city.value}>
-                            {city.label}
+                    <SelectContent>
+                      {isLoadingLocations ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : availableCities.length > 0 ? (
+                        availableCities.map((city) => (
+                          <SelectItem key={city.city_code} value={city.city_code}>
+                            {city.name}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
+                        ))
+                      ) : (
+                        <SelectItem value="no-cities" disabled>No cities available</SelectItem>
+                      )}
+                    </SelectContent>
                     </Select>
                     {cityCode && (
                       <Button
@@ -361,8 +458,8 @@ export default function RadiusFilterPage() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">Location</p>
                     <p className="text-sm text-foreground">
-                      {(selectedMachine.last_known_lat ?? selectedMachine.lat).toFixed(6)}, {" "}
-                      {(selectedMachine.last_known_lng ?? selectedMachine.lng).toFixed(6)}
+                      {(selectedMachine.device?.latitude ?? selectedMachine.lat).toFixed(6)}, {" "}
+                      {(selectedMachine.device?.longitude ?? selectedMachine.lng).toFixed(6)}
                     </p>
                   </div>
                   {selectedMachine.radius && (
@@ -407,8 +504,8 @@ export default function RadiusFilterPage() {
               <CardContent>
                 <div className="space-y-4 max-h-[600px] overflow-y-auto">
                   {machines.map((machine) => {
-                    const lat = machine.last_known_lat ?? machine.lat
-                    const lng = machine.last_known_lng ?? machine.lng
+                    const lat = machine.device?.latitude ?? machine.lat
+                    const lng = machine.device?.longitude ?? machine.lng
                     const isActive = machine.status === "active"
 
                     return (

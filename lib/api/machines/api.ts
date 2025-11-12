@@ -107,7 +107,28 @@ export class MachinesApi {
     if (cityCode) queryParams.append('cityCode', cityCode);
 
     const endpoint = `/machines/filter${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    return apiClient.authenticatedRequest(endpoint, accessToken);
+    const response = await apiClient.authenticatedRequest<{
+      success: boolean;
+      data: Machine[];
+      total: number;
+      filters: {
+        countryCode: string | null;
+        cityCode: string | null;
+      };
+      message?: string;
+    }>(endpoint, accessToken);
+    
+    // Ensure response has the expected structure
+    return {
+      success: response.success ?? true,
+      data: response.data || [],
+      total: response.total ?? (response.data?.length || 0),
+      filters: response.filters || {
+        countryCode: countryCode || null,
+        cityCode: cityCode || null,
+      },
+      message: response.message,
+    };
   }
 
   async filterMachinesByRadius(
@@ -139,6 +160,34 @@ export class MachinesApi {
 
     const endpoint = `/machines/filter-by-radius?${queryParams.toString()}`;
     return apiClient.authenticatedRequest(endpoint, accessToken);
+  }
+
+  async linkMachineToDevice(
+    accessToken: string,
+    machineId: string,
+    deviceId: string
+  ): Promise<ApiResponse<Machine>> {
+    return apiClient.authenticatedRequest<ApiResponse<Machine>>(
+      `/machines/${machineId}/link-device`,
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({ device_id: deviceId }),
+      }
+    );
+  }
+
+  async unlinkMachineFromDevice(
+    accessToken: string,
+    machineId: string
+  ): Promise<ApiResponse<Machine>> {
+    return apiClient.authenticatedRequest<ApiResponse<Machine>>(
+      `/machines/${machineId}/unlink-device`,
+      accessToken,
+      {
+        method: 'DELETE',
+      }
+    );
   }
 }
 

@@ -11,7 +11,7 @@ import { machinesApi } from "@/lib/api/machines"
 import { useAuthStore } from "@/lib/auth-store"
 import { Machine } from "@/lib/api/machines/types"
 import { useToast } from "@/hooks/use-toast"
-import { Edit, Trash2, MoreHorizontal, Save, X, Map, Plus, MapPin, Loader2 } from "lucide-react"
+import { Edit, Trash2, MoreHorizontal, Save, X, Map, Plus, MapPin, Loader2, Search } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +29,9 @@ export default function MachinesPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [deletingMachine, setDeletingMachine] = useState<string | null>(null);
   const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [editFormData, setEditFormData] = useState({
@@ -81,11 +83,35 @@ export default function MachinesPage() {
     fetchMachines()
   }, [isAuthenticated, accessToken]);
 
-  const filteredMachines = machines.filter(machine =>
-    machine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    machine.machine_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    machine.address.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredMachines = machines.filter(machine => {
+    // Status filter
+    if (statusFilter !== "all" && machine.status !== statusFilter) {
+      return false;
+    }
+    
+    // Search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        machine.name.toLowerCase().includes(searchLower) ||
+        machine.machine_id.toLowerCase().includes(searchLower) ||
+        machine.address.toLowerCase().includes(searchLower) ||
+        (machine.device_id && machine.device_id.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    return true;
+  });
+
+  const handleSearch = () => {
+    setSearchTerm(searchInput);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -100,17 +126,21 @@ export default function MachinesPage() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return "Never";
+    
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "Never";
+    
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
     
     if (diffInHours < 1) {
-      return 'Just now'
+      return 'Just now';
     } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`
+      return `${diffInHours}h ago`;
     } else if (diffInHours < 48) {
-      return 'Yesterday'
+      return 'Yesterday';
     } else {
       return date.toLocaleDateString('vi-VN', {
         year: 'numeric',
@@ -118,7 +148,7 @@ export default function MachinesPage() {
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
-      })
+      });
     }
   }
 
@@ -404,9 +434,7 @@ export default function MachinesPage() {
         lng: lng,
         radius: radius,
         address: createFormData.address,
-        status: 'offline' as const,
-        last_known_lat: lat,
-        last_known_lng: lng
+        status: 'offline' as const
       };
 
       await machinesApi.createMachine(accessToken, createData);
@@ -475,13 +503,40 @@ export default function MachinesPage() {
             <CardDescription>All machines in your organization</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="mb-4">
-              <Input 
-                placeholder="Search machines..." 
-                className="bg-input border-border"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+            <div className="mb-4 space-y-3">
+              <div className="relative">
+                <Input 
+                  placeholder="Search by machine_id, name, address, device_id" 
+                  className="bg-input border-border pr-10"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={handleSearch}
+                >
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-foreground">Filter by Status:</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-3 py-1.5 border border-input bg-background rounded-md text-sm"
+                >
+                  <option value="all">All</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="maintenance">Maintenance</option>
+                  <option value="offline">Offline</option>
+                </select>
+              </div>
             </div>
             
             {error && (
@@ -532,7 +587,9 @@ export default function MachinesPage() {
                         <tr key={machine.machine_id} className="border-b border-border hover:bg-muted/50">
                           <td className="py-3 px-4 text-foreground font-medium">{machine.machine_id}</td>
                           <td className="py-3 px-4 text-foreground">{machine.name}</td>
-                          <td className="py-3 px-4 text-foreground font-mono text-xs">{machine.device_id}</td>
+                          <td className="py-3 px-4 text-foreground font-mono text-xs">
+                            {machine.device_id || "Not linked"}
+                          </td>
                           <td className="py-3 px-4 text-foreground max-w-xs truncate" title={machine.address}>
                             {machine.address}
                           </td>
@@ -544,7 +601,7 @@ export default function MachinesPage() {
                             </span>
                           </td>
                           <td className="py-3 px-4 text-foreground text-xs">
-                            {formatDate(machine.last_location_check)}
+                            {formatDate(machine.device?.ts_iso || (machine.device?.ts ? new Date(machine.device.ts * 1000).toISOString() : undefined))}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">

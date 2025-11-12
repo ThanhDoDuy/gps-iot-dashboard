@@ -1,14 +1,24 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import dynamic from "next/dynamic"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/auth-store"
 import { machinesApi } from "@/lib/api/machines"
+import { devicesApi } from "@/lib/api/devices"
+import { locationsApi } from "@/lib/api/locations"
 import { Machine } from "@/lib/api/machines/types"
-import { MachinesMap } from "@/components/machines-map"
+import { Device } from "@/lib/api/devices/types"
+import { Country, City } from "@/lib/api/locations/types"
+
+// Dynamic import for MachinesMap to avoid SSR issues with Leaflet
+const MachinesMap = dynamic(() => import("@/components/machines-map").then(mod => ({ default: mod.MachinesMap })), {
+  ssr: false,
+  loading: () => <div className="w-full h-[400px] flex items-center justify-center bg-gray-100 rounded-lg">Loading map...</div>
+})
 import {
   Select,
   SelectContent,
@@ -30,47 +40,20 @@ import {
   ResponsiveContainer,
 } from "recharts"
 
-const dashboardData = [
-  { name: "Jan", devices: 40, machines: 24, active: 32 },
-  { name: "Feb", devices: 45, machines: 28, active: 38 },
-  { name: "Mar", devices: 50, machines: 32, active: 42 },
-  { name: "Apr", devices: 55, machines: 35, active: 48 },
-  { name: "May", devices: 60, machines: 38, active: 52 },
-  { name: "Jun", devices: 65, machines: 42, active: 58 },
-]
-
-const stats = [
-  { label: "Total Devices", value: "1,234", change: "+12%" },
-  { label: "Active Machines", value: "856", change: "+8%" },
-  { label: "System Health", value: "98.5%", change: "+2%" },
-  { label: "Alerts", value: "23", change: "-5%" },
-]
-
-// Predefined country and city options
-const countries = [
-  { value: "vietnam", label: "Vietnam" },
-  { value: "thailand", label: "Thailand" },
-]
-
-const cities: Record<string, { value: string; label: string }[]> = {
-  vietnam: [
-    { value: "hcm", label: "Ho Chi Minh City" },
-    { value: "danang", label: "Da Nang" },
-    { value: "hanoi", label: "Hanoi" },
-  ],
-  thailand: [
-    { value: "bangkok", label: "Bangkok" },
-    { value: "pattaya", label: "Pattaya" },
-  ],
-}
 
 export default function DashboardPage() {
   const { toast } = useToast()
   const { accessToken, isAuthenticated } = useAuthStore()
   const [machines, setMachines] = useState<Machine[]>([])
+  const [allMachines, setAllMachines] = useState<Machine[]>([])
+  const [allDevices, setAllDevices] = useState<Device[]>([])
+  const [countries, setCountries] = useState<Country[]>([])
+  const [cities, setCities] = useState<Record<string, City[]>>({})
   const [isLoading, setIsLoading] = useState(false)
-  const [countryCode, setCountryCode] = useState<string>("vietnam")
-  const [cityCode, setCityCode] = useState<string>("hcm")
+  const [isLoadingStats, setIsLoadingStats] = useState(true)
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true)
+  const [countryCode, setCountryCode] = useState<string>("")
+  const [cityCode, setCityCode] = useState<string>("")
   const [filteredCount, setFilteredCount] = useState(0)
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null)
   const [showList, setShowList] = useState(false)
@@ -94,10 +77,16 @@ export default function DashboardPage() {
         countryCode || undefined,
         cityCode || undefined
       )
+      console.log("Filter machines response:", response)
       setMachines(response.data || [])
       setFilteredCount(response.total || 0)
     } catch (error: any) {
       console.error("Error fetching filtered machines:", error)
+      console.error("Error details:", {
+        message: error.message,
+        statusCode: error.statusCode,
+        stack: error.stack
+      })
       toast({
         title: "Error",
         description: error.message || "Failed to fetch machines",
@@ -110,6 +99,117 @@ export default function DashboardPage() {
     }
   }
 
+  // Fetch all machines and devices for stats
+  const fetchAllData = async () => {
+    if (!isAuthenticated || !accessToken) {
+      setIsLoadingStats(false)
+      return
+    }
+
+    try {
+      setIsLoadingStats(true)
+      
+      // Fetch all machines
+      const machinesResponse = await machinesApi.getMachines(accessToken)
+      const machinesData = machinesResponse.data || []
+      setAllMachines(machinesData)
+
+      // Fetch all devices with pagination
+      let allDevicesData: Device[] = []
+      let skip = 0
+      const limit = 100
+      let hasMore = true
+
+      while (hasMore) {
+        const devicesResponse = await devicesApi.getAllDevices(accessToken, { limit, skip })
+        allDevicesData = [...allDevicesData, ...devicesResponse.data]
+        hasMore = devicesResponse.pagination.hasNext
+        skip += limit
+      }
+
+      setAllDevices(allDevicesData)
+    } catch (error: any) {
+      console.error("Error fetching dashboard data:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fetch dashboard data",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingStats(false)
+    }
+  }
+
+  // Fetch countries - only when dropdown is opened
+  const fetchCountries = async () => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
+
+    // If already loaded, don't fetch again
+    if (countries.length > 0) {
+      return
+    }
+
+    try {
+      setIsLoadingLocations(true)
+      const countriesResponse = await locationsApi.getCountries(accessToken)
+      const countriesData = countriesResponse.data || []
+      console.log("Fetched countries:", countriesData)
+      setCountries(countriesData)
+    } catch (error: any) {
+      console.error("Error fetching countries:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fetch countries",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingLocations(false)
+    }
+  }
+
+  // Fetch cities for a country - only when dropdown is opened
+  const fetchCitiesForCountry = async (countryCodeToFetch: string) => {
+    if (!isAuthenticated || !accessToken || !countryCodeToFetch) {
+      return
+    }
+
+    // If already loaded for this country, don't fetch again
+    if (cities[countryCodeToFetch] && cities[countryCodeToFetch].length > 0) {
+      return
+    }
+
+    try {
+      setIsLoadingLocations(true)
+      const citiesResponse = await locationsApi.getCities(accessToken, countryCodeToFetch)
+      const citiesData = citiesResponse.data || []
+      setCities(prev => ({
+        ...prev,
+        [countryCodeToFetch]: citiesData
+      }))
+    } catch (error: any) {
+      console.error(`Error fetching cities for ${countryCodeToFetch}:`, error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fetch cities",
+        variant: "destructive",
+      })
+      setCities(prev => ({
+        ...prev,
+        [countryCodeToFetch]: []
+      }))
+    } finally {
+      setIsLoadingLocations(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchAllData()
+    // Don't fetch locations on mount - only when dropdown is opened
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, isAuthenticated])
+
   useEffect(() => {
     if (countryCode || cityCode) {
       fetchFilteredMachines()
@@ -121,11 +221,142 @@ export default function DashboardPage() {
   }, [countryCode, cityCode, accessToken, isAuthenticated])
 
   const handleClearFilters = () => {
-    setCountryCode("")
-    setCityCode("")
+    // Reset to first country and city if available
+    if (countries.length > 0) {
+      const firstCountry = countries[0]
+      setCountryCode(firstCountry.country_code)
+      const firstCities = cities[firstCountry.country_code] || []
+      setCityCode(firstCities.length > 0 ? firstCities[0].city_code : "")
+    } else {
+      setCountryCode("")
+      setCityCode("")
+    }
   }
 
+  // Clear city when country changes
+  useEffect(() => {
+    if (countryCode) {
+      setCityCode("")
+    }
+  }, [countryCode])
+
   const availableCities = countryCode ? cities[countryCode] || [] : []
+
+  // Calculate stats from real data
+  const stats = useMemo(() => {
+    const totalDevices = allDevices.length
+    const activeMachines = allMachines.filter(m => m.status === 'active').length
+    const totalMachines = allMachines.length
+    const inactiveMachines = allMachines.filter(m => m.status === 'inactive' || m.status === 'offline').length
+    
+    // Calculate system health (percentage of active machines)
+    const systemHealth = totalMachines > 0 
+      ? ((activeMachines / totalMachines) * 100).toFixed(1)
+      : '0.0'
+    
+    // Calculate change (mock for now, could be calculated from previous period)
+    const deviceChange = totalDevices > 0 ? "+0%" : "0%"
+    const machineChange = activeMachines > 0 ? "+0%" : "0%"
+    const healthChange = systemHealth !== '0.0' ? "+0%" : "0%"
+    
+    return [
+      { label: "Total Devices", value: totalDevices.toLocaleString(), change: deviceChange },
+      { label: "Active Machines", value: activeMachines.toLocaleString(), change: machineChange },
+      { label: "System Health", value: `${systemHealth}%`, change: healthChange },
+      { label: "Alerts", value: inactiveMachines.toLocaleString(), change: "-0%" },
+    ]
+  }, [allDevices, allMachines])
+
+  // Calculate chart data from real data (group by month)
+  const dashboardData = useMemo(() => {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    const currentDate = new Date()
+    const last6Months: { name: string; devices: number; machines: number; active: number }[] = []
+
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
+      const monthName = monthNames[date.getMonth()]
+      
+      // Count devices created in this month
+      const devicesInMonth = allDevices.filter(device => {
+        const deviceDate = device.ts_iso ? new Date(device.ts_iso) : new Date(device.ts * 1000)
+        return deviceDate.getFullYear() === date.getFullYear() && 
+               deviceDate.getMonth() === date.getMonth()
+      }).length
+
+      // Count machines created in this month
+      const machinesInMonth = allMachines.filter(machine => {
+        const machineDate = new Date(machine.created_at)
+        return machineDate.getFullYear() === date.getFullYear() && 
+               machineDate.getMonth() === date.getMonth()
+      }).length
+
+      // Count active machines in this month (machines that were active at some point)
+      const activeInMonth = allMachines.filter(machine => {
+        const machineDate = new Date(machine.created_at)
+        return machineDate.getFullYear() === date.getFullYear() && 
+               machineDate.getMonth() === date.getMonth() &&
+               machine.status === 'active'
+      }).length
+
+      last6Months.push({
+        name: monthName,
+        devices: devicesInMonth,
+        machines: machinesInMonth,
+        active: activeInMonth
+      })
+    }
+
+    return last6Months
+  }, [allDevices, allMachines])
+
+  // Calculate recent activity from machines and devices
+  const recentActivity = useMemo(() => {
+    const activities: Array<{ event: string; time: string; status: string; timestamp: number }> = []
+    
+    // Format time ago
+    const formatTimeAgo = (date: Date): string => {
+      const now = new Date()
+      const diffInMs = now.getTime() - date.getTime()
+      const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60))
+      const diffInDays = Math.floor(diffInHours / 24)
+
+      if (diffInHours < 1) return "Just now"
+      if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`
+      if (diffInDays < 7) return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`
+      return date.toLocaleDateString()
+    }
+
+    // Add machine activities
+    allMachines.forEach(machine => {
+      const date = new Date(machine.updated_at || machine.created_at)
+      const status = machine.status === 'active' ? 'success' : 
+                     machine.status === 'maintenance' ? 'warning' : 'info'
+      activities.push({
+        event: `Machine ${machine.name} (${machine.machine_id}) ${machine.updated_at ? 'updated' : 'created'}`,
+        time: formatTimeAgo(date),
+        status,
+        timestamp: date.getTime()
+      })
+    })
+
+    // Add device activities
+    allDevices.forEach(device => {
+      const date = device.ts_iso ? new Date(device.ts_iso) : new Date(device.ts * 1000)
+      activities.push({
+        event: `Device ${device.device_id} location updated`,
+        time: formatTimeAgo(date),
+        status: 'success',
+        timestamp: date.getTime()
+      })
+    })
+
+    // Sort all activities by timestamp (most recent first) and take top 4
+    return activities
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 4)
+      .map(({ timestamp, ...rest }) => rest) // Remove timestamp from final result
+  }, [allMachines, allDevices])
 
   return (
     <DashboardLayout>
@@ -169,34 +400,47 @@ export default function DashboardPage() {
               <div className="flex-1">
                 <label className="text-sm font-medium mb-2 block">Country</label>
                 <div className="relative">
-                  <Select value={countryCode || undefined} onValueChange={(value) => {
-                    setCountryCode(value)
-                    // Clear city when country changes
-                    if (value !== countryCode) {
-                      setCityCode("")
-                    }
-                  }}>
-                    <SelectTrigger>
+                  <Select 
+                    value={countryCode || undefined} 
+                    onValueChange={(value) => {
+                      setCountryCode(value)
+                    }}
+                    onOpenChange={(open) => {
+                      // Fetch countries when dropdown opens
+                      if (open) {
+                        fetchCountries()
+                      }
+                    }}
+                  >
+                    <SelectTrigger className={countryCode ? "pr-8" : ""}>
                       <SelectValue placeholder="Select country" />
                     </SelectTrigger>
                     <SelectContent>
-                      {countries.map((country) => (
-                        <SelectItem key={country.value} value={country.value}>
-                          {country.label}
-                        </SelectItem>
-                      ))}
+                      {isLoadingLocations ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : countries.length === 0 ? (
+                        <SelectItem value="no-countries" disabled>Click to load countries</SelectItem>
+                      ) : (
+                        countries.map((country) => (
+                          <SelectItem key={country.country_code} value={country.country_code}>
+                            {country.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   {countryCode && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="absolute right-8 top-0 h-full px-2 hover:bg-transparent"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent z-10"
                       onClick={(e) => {
+                        e.preventDefault()
                         e.stopPropagation()
                         setCountryCode("")
                         setCityCode("")
                       }}
+                      type="button"
                     >
                       <X className="h-4 w-4 text-muted-foreground" />
                     </Button>
@@ -210,27 +454,43 @@ export default function DashboardPage() {
                     value={cityCode || undefined}
                     onValueChange={setCityCode}
                     disabled={!countryCode}
+                    onOpenChange={(open) => {
+                      // Fetch cities when dropdown opens and country is selected
+                      if (open && countryCode) {
+                        fetchCitiesForCountry(countryCode)
+                      }
+                    }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={cityCode ? "pr-8" : ""} disabled={!countryCode}>
                       <SelectValue placeholder={countryCode ? "Select city (optional)" : "Select country first"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableCities.map((city) => (
-                        <SelectItem key={city.value} value={city.value}>
-                          {city.label}
-                        </SelectItem>
-                      ))}
+                      {isLoadingLocations ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : !countryCode ? (
+                        <SelectItem value="no-country" disabled>Select country first</SelectItem>
+                      ) : availableCities.length > 0 ? (
+                        availableCities.map((city) => (
+                          <SelectItem key={city.city_code} value={city.city_code}>
+                            {city.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-cities" disabled>Click to load cities</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   {cityCode && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="absolute right-8 top-0 h-full px-2 hover:bg-transparent"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent z-10"
                       onClick={(e) => {
+                        e.preventDefault()
                         e.stopPropagation()
                         setCityCode("")
                       }}
+                      type="button"
                     >
                       <X className="h-4 w-4 text-muted-foreground" />
                     </Button>
@@ -243,8 +503,8 @@ export default function DashboardPage() {
                 <Filter className="h-4 w-4" />
                 <span>
                   Showing {filteredCount} machine{filteredCount !== 1 ? "s" : ""}
-                  {countryCode && ` in ${countries.find((c) => c.value === countryCode)?.label}`}
-                  {cityCode && `, ${availableCities.find((c) => c.value === cityCode)?.label}`}
+                  {countryCode && ` in ${countries.find((c) => c.country_code === countryCode)?.name}`}
+                  {cityCode && `, ${availableCities.find((c) => c.city_code === cityCode)?.name}`}
                 </span>
               </div>
             )}
@@ -332,8 +592,8 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">Location</p>
                     <p className="text-sm text-foreground">
-                      {(selectedMachine.last_known_lat ?? selectedMachine.lat).toFixed(6)}, {" "}
-                      {(selectedMachine.last_known_lng ?? selectedMachine.lng).toFixed(6)}
+                      {(selectedMachine.device?.latitude ?? selectedMachine.lat).toFixed(6)}, {" "}
+                      {(selectedMachine.device?.longitude ?? selectedMachine.lng).toFixed(6)}
                     </p>
                   </div>
                   {selectedMachine.radius && (
@@ -382,8 +642,8 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="space-y-4 max-h-[600px] overflow-y-auto">
                   {machines.map((machine) => {
-                    const lat = machine.last_known_lat ?? machine.lat
-                    const lng = machine.last_known_lng ?? machine.lng
+                    const lat = machine.device?.latitude ?? machine.lat
+                    const lng = machine.device?.longitude ?? machine.lng
                     const isActive = machine.status === "active"
 
                     return (
@@ -426,19 +686,32 @@ export default function DashboardPage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat) => (
-            <Card key={stat.label} className="bg-card border-border">
-              <CardContent className="pt-6">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                    <span className="text-xs font-medium text-accent">{stat.change}</span>
+          {isLoadingStats ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="bg-card border-border">
+                <CardContent className="pt-6">
+                  <div className="space-y-2">
+                    <div className="h-4 bg-muted rounded w-24 animate-pulse" />
+                    <div className="h-8 bg-muted rounded w-16 animate-pulse" />
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            stats.map((stat) => (
+              <Card key={stat.label} className="bg-card border-border">
+                <CardContent className="pt-6">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                    <div className="flex items-baseline justify-between">
+                      <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                      <span className="text-xs font-medium text-accent">{stat.change}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Charts */}
@@ -490,32 +763,45 @@ export default function DashboardPage() {
             <CardDescription>Latest system events and updates</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                { event: "Device CM-001 connected", time: "2 hours ago", status: "success" },
-                { event: "Maintenance alert for Machine M-45", time: "4 hours ago", status: "warning" },
-                { event: "User John Doe added to tenant", time: "1 day ago", status: "info" },
-                { event: "System backup completed", time: "2 days ago", status: "success" },
-              ].map((item, idx) => (
-                <div key={idx} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{item.event}</p>
-                    <p className="text-xs text-muted-foreground">{item.time}</p>
+            {isLoadingStats ? (
+              <div className="space-y-4">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                    <div className="flex-1">
+                      <div className="h-4 bg-muted rounded w-3/4 mb-2 animate-pulse" />
+                      <div className="h-3 bg-muted rounded w-1/2 animate-pulse" />
+                    </div>
+                    <div className="h-6 bg-muted rounded w-16 animate-pulse" />
                   </div>
-                  <div
-                    className={`px-2 py-1 rounded text-xs font-medium ${
-                      item.status === "success"
-                        ? "bg-green-100 text-green-700"
-                        : item.status === "warning"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : "bg-blue-100 text-blue-700"
-                    }`}
-                  >
-                    {item.status}
+                ))}
+              </div>
+            ) : recentActivity.length > 0 ? (
+              <div className="space-y-4">
+                {recentActivity.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{item.event}</p>
+                      <p className="text-xs text-muted-foreground">{item.time}</p>
+                    </div>
+                    <div
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        item.status === "success"
+                          ? "bg-green-100 text-green-700"
+                          : item.status === "warning"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {item.status}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No recent activity</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

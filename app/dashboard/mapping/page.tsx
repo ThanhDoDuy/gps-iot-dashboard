@@ -43,11 +43,25 @@ export default function MappingPage() {
     }
 
     try {
-      const response = await devicesApi.getDevices(accessToken);
-      setDevices(response.data);
+      // Fetch all devices with pagination (max limit is 100)
+      let allDevices: Device[] = []
+      let skip = 0
+      const limit = 100
+      let hasMore = true
+
+      while (hasMore) {
+        const response = await devicesApi.getAllDevices(accessToken, { limit, skip })
+        allDevices = [...allDevices, ...response.data]
+        
+        // Check if there are more devices to fetch
+        hasMore = response.pagination.hasNext
+        skip += limit
+      }
+
+      setDevices(allDevices)
     } catch (err) {
-      console.error('Failed to load devices:', err);
-      setError('Failed to load devices');
+      console.error('Failed to load devices:', err)
+      setError('Failed to load devices')
     }
   }
 
@@ -145,14 +159,13 @@ export default function MappingPage() {
 
     setIsLinking(true)
     try {
-      // Link device to machine using device ID and machine ID
-      await devicesApi.linkToMachine(accessToken, selectedDevice, {
-        machine_id: selectedMachine
-      })
+      // Link machine to device using machines API
+      await machinesApi.linkMachineToDevice(accessToken, selectedMachine, selectedDevice)
 
       // Refresh data
       await Promise.all([
         fetchDevices(),
+        fetchMachines(),
         fetchUnlinkedDevices(),
         fetchUnlinkedMachines()
       ])
@@ -178,14 +191,26 @@ export default function MappingPage() {
   const handleUnlink = async (deviceId: string) => {
     if (!accessToken) return
 
+    // Find the machine linked to this device
+    const device = devices.find(d => d.device_id === deviceId)
+    if (!device || !device.machine_id) {
+      toast({
+        title: "Error",
+        description: "Device is not linked to any machine",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsUnlinking(deviceId);
     try {
-      // Unlink device from machine using dedicated API
-      await devicesApi.unlinkFromMachine(accessToken, deviceId)
+      // Unlink machine from device using machines API
+      await machinesApi.unlinkMachineFromDevice(accessToken, device.machine_id)
 
       // Refresh data
       await Promise.all([
         fetchDevices(),
+        fetchMachines(),
         fetchUnlinkedDevices(),
         fetchUnlinkedMachines()
       ]);
@@ -215,10 +240,10 @@ export default function MappingPage() {
   // Reverse geocode device locations when devices are loaded
   useEffect(() => {
     linkedDevices.forEach(device => {
-      if (device.latest_location?.latitude && device.latest_location?.longitude) {
+      if (device.latitude != null && device.longitude != null) {
         // Only geocode if we haven't already done it
         if (!geocodedDevices.current.has(device.device_id) && !isReverseGeocoding[device.device_id]) {
-          reverseGeocode(device.device_id, device.latest_location.latitude, device.latest_location.longitude)
+          reverseGeocode(device.device_id, device.latitude, device.longitude)
         }
       }
     })

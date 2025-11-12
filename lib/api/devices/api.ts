@@ -1,56 +1,54 @@
 import { apiClient } from '../client';
-import { ApiResponse } from '../types';
-import { Device, CreateDeviceRequest, UpdateDeviceRequest, LinkDeviceToMachine } from './types';
+import { PaginatedDevicesResponse, DeviceResponse, Device } from './types';
+
+export interface GetAllDevicesParams {
+  limit?: number;
+  skip?: number;
+  search?: string;
+  country?: string;
+  site?: string;
+}
 
 export const devicesApi = {
-  async getDevices(accessToken: string): Promise<ApiResponse<Device[]>> {
-    return apiClient.authenticatedRequest<ApiResponse<Device[]>>('/devices', accessToken, {
+  async getAllDevices(
+    accessToken: string,
+    params?: GetAllDevicesParams
+  ): Promise<PaginatedDevicesResponse> {
+    const queryParams = new URLSearchParams();
+    
+    if (params?.limit !== undefined) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    if (params?.skip !== undefined) {
+      queryParams.append('skip', params.skip.toString());
+    }
+    if (params?.search) {
+      queryParams.append('search', params.search);
+    }
+    if (params?.country) {
+      queryParams.append('country', params.country);
+    }
+    if (params?.site) {
+      queryParams.append('site', params.site);
+    }
+
+    const queryString = queryParams.toString();
+    const url = `/devices/all${queryString ? `?${queryString}` : ''}`;
+
+    return apiClient.authenticatedRequest<PaginatedDevicesResponse>(url, accessToken, {
       method: 'GET',
     });
   },
 
-  async getUnlinkedDevices(accessToken: string): Promise<ApiResponse<Device[]>> {
-    return apiClient.authenticatedRequest<ApiResponse<Device[]>>('/devices/unlinked', accessToken, {
+  async getDevice(accessToken: string, deviceId: string): Promise<DeviceResponse> {
+    return apiClient.authenticatedRequest<DeviceResponse>(`/devices/${deviceId}`, accessToken, {
       method: 'GET',
     });
   },
 
-  async linkToMachine(accessToken: string, deviceId: string, deviceData: LinkDeviceToMachine): Promise<ApiResponse<Device>> {
-    return apiClient.authenticatedRequest<ApiResponse<Device>>(`/devices/${deviceId}/link-machine`, accessToken, {
-      method: 'POST',
-      body: JSON.stringify(deviceData),
-    });
-  },
-
-  async unlinkFromMachine(accessToken: string, deviceId: string): Promise<ApiResponse<Device>> {
-    return apiClient.authenticatedRequest<ApiResponse<Device>>(`/devices/${deviceId}/unlink-machine`, accessToken, {
-      method: 'DELETE',
-    });
-  },
-
-  async getDevice(accessToken: string, deviceId: string): Promise<ApiResponse<Device>> {
-    return apiClient.authenticatedRequest<ApiResponse<Device>>(`/devices/${deviceId}`, accessToken, {
+  async getUnlinkedDevices(accessToken: string): Promise<{ success: boolean; data: Device[]; message?: string }> {
+    return apiClient.authenticatedRequest(`/devices/unlinked`, accessToken, {
       method: 'GET',
-    });
-  },
-
-  async createDevice(accessToken: string, deviceData: CreateDeviceRequest): Promise<ApiResponse<Device>> {
-    return apiClient.authenticatedRequest<ApiResponse<Device>>('/devices', accessToken, {
-      method: 'POST',
-      body: JSON.stringify(deviceData),
-    });
-  },
-
-  async updateDevice(accessToken: string, deviceId: string, updateData: UpdateDeviceRequest): Promise<ApiResponse<Device>> {
-    return apiClient.authenticatedRequest<ApiResponse<Device>>(`/devices/${deviceId}`, accessToken, {
-      method: 'PUT',
-      body: JSON.stringify(updateData),
-    });
-  },
-
-  async deleteDevice(accessToken: string, deviceId: string): Promise<{ success: boolean; message: string }> {
-    return apiClient.authenticatedRequest<{ success: boolean; message: string }>(`/devices/${deviceId}`, accessToken, {
-      method: 'DELETE',
     });
   },
 }

@@ -35,7 +35,7 @@ export default function MachineDetailPage() {
       setError(null)
       const response = await machinesApi.getMachine(accessToken, machineId)
       console.log("Machine response:", response)
-      console.log("Machine device latest_location:", response.data?.device?.latest_location)
+      console.log("Machine device:", response.data?.device)
       console.log("Machine origin coordinates:", { lat: response.data?.lat, lng: response.data?.lng })
       setMachine(response.data)
     } catch (err) {
@@ -52,8 +52,8 @@ export default function MachineDetailPage() {
 
   // Reverse geocoding for latest location coordinates
   useEffect(() => {
-    if (machine && machine.device?.latest_location?.latitude !== undefined && machine.device?.latest_location?.longitude !== undefined) {
-      reverseGeocode(machine.device.latest_location.latitude, machine.device.latest_location.longitude)
+    if (machine && machine.device?.latitude !== undefined && machine.device?.longitude !== undefined) {
+      reverseGeocode(machine.device.latitude, machine.device.longitude)
     } else {
       setLastKnownAddress(null)
     }
@@ -72,8 +72,13 @@ export default function MachineDetailPage() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('EN', {
+  const formatDate = (dateString: string | number | undefined) => {
+    if (!dateString) return "Never";
+    
+    const date = typeof dateString === 'string' ? new Date(dateString) : new Date(dateString * 1000);
+    if (isNaN(date.getTime())) return "Never";
+    
+    return date.toLocaleDateString('EN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -134,8 +139,8 @@ export default function MachineDetailPage() {
     
     const currentLat = machine.lat;
     const currentLng = machine.lng;
-    const latestLat = machine.device?.latest_location?.latitude || machine.lat;
-    const latestLng = machine.device?.latest_location?.longitude || machine.lng;
+    const latestLat = machine.device?.latitude || machine.lat;
+    const latestLng = machine.device?.longitude || machine.lng;
     
     // Create a Google Maps URL that shows both locations
     const url = `https://www.google.com/maps/dir/${currentLat},${currentLng}/${latestLat},${latestLng}`
@@ -314,11 +319,11 @@ export default function MachineDetailPage() {
                     <p className="text-foreground font-medium">
                       {lastKnownAddress || "N/A"}
                     </p>
-                    {(!machine.device?.latest_location?.latitude || !machine.device?.latest_location?.longitude) && (
+                    {!machine.device?.latitude || !machine.device?.longitude ? (
                       <p className="text-xs text-muted-foreground mt-1">
                         Same as origin setup coordinates
                       </p>
-                    )}
+                    ) : null}
                   </>
                 )}
               </div>
@@ -330,16 +335,8 @@ export default function MachineDetailPage() {
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Distance From Origin</label>
                   <p className="text-foreground">
-                    {machine.device?.latest_location?.latitude !== undefined && machine.device?.latest_location?.longitude !== undefined
-                      ? (() => {
-                          const distance = calculateDistance(machine.lat, machine.lng, machine.device.latest_location.latitude, machine.device.latest_location.longitude)
-                          console.log("Distance calculation:", {
-                            origin: { lat: machine.lat, lng: machine.lng },
-                            latest: { lat: machine.device.latest_location.latitude, lng: machine.device.latest_location.longitude },
-                            distance: distance
-                          })
-                          return formatDistance(distance)
-                        })()
+                    {machine.device?.latitude !== undefined && machine.device?.longitude !== undefined
+                      ? formatDistance(calculateDistance(machine.lat, machine.lng, machine.device.latitude, machine.device.longitude))
                       : "N/A"
                     }
                   </p>
@@ -347,16 +344,9 @@ export default function MachineDetailPage() {
               </div>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Latest Location Timestamp</label>
-                <p className="text-foreground text-sm">{formatDate(machine.device?.latest_location?.timestamp || "N/A")}</p>
-              </div>
-              
-              {/* Debug coordinates */}
-              <div className="mt-4 p-3 bg-gray-50 rounded-md">
-                <label className="text-sm font-medium text-muted-foreground">Debug Coordinates</label>
-                <div className="text-xs text-muted-foreground mt-1 space-y-1">
-                  <div>Origin: {machine.lat}, {machine.lng}</div>
-                  <div>Latest: {machine.device?.latest_location?.latitude || 'N/A'}, {machine.device?.latest_location?.longitude || 'N/A'}</div>
-                </div>
+                <p className="text-foreground text-sm">
+                  {formatDate(machine.device?.ts_iso || machine.device?.ts)}
+                </p>
               </div>
               
               {/* Compare Button */}
@@ -424,19 +414,12 @@ export default function MachineDetailPage() {
                       <span className="text-sm font-medium">{machine.device.model}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Device Status:</span>
-                      <Badge 
-                        variant={machine.device.status === 'active' ? 'default' : 'secondary'}
-                        className={
-                          machine.device.status === 'active' 
-                            ? 'bg-green-100 text-green-700' 
-                            : machine.device.status === 'inactive'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                        }
-                      >
-                        {machine.device.status}
-                      </Badge>
+                      <span className="text-sm text-muted-foreground">Site:</span>
+                      <span className="text-sm">{machine.device.site || "-"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Country:</span>
+                      <span className="text-sm">{machine.device.country || "-"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Linked Time:</span>
@@ -444,7 +427,9 @@ export default function MachineDetailPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Latest Update:</span>
-                      <span className="text-sm">{formatDate(machine?.device?.latest_location?.timestamp || "N/A")}</span>
+                      <span className="text-sm">
+                        {formatDate(machine?.device?.ts_iso || machine?.device?.ts)}
+                      </span>
                     </div>
                   </div>
                 </div>

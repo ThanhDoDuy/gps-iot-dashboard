@@ -2,8 +2,8 @@
 export interface Machine {
   machine_id: string;
   name: string;
-  device_id: string;
-  status: 'active' | 'inactive' | 'maintenance';
+  device_id?: string; // Optional - machine may not be linked to device
+  status: 'active' | 'inactive' | 'maintenance' | 'offline';
   status_reason?: string; // Reason for inactive status
   address: string;
   lat: number;
@@ -12,20 +12,19 @@ export interface Machine {
   linked_time?: string;
   tenant_id: string;
   created_at: string;
-  updated_at: string;
-  last_known_lat?: number;
-  last_known_lng?: number;
+  updated_at?: string;
   device?: {
-    model: string;
-    status: string;
+    tenant_id: string;
     device_id: string;
-    latest_location?: {
-      latitude: number;
-      longitude: number;
-      accuracy: number;
-      timestamp: string;
-      source: string;
-    };
+    accuracy: number;
+    country: string;
+    latitude: number;
+    longitude: number;
+    model: string;
+    site: string;
+    ts: number; // Unix timestamp
+    ts_iso: string; // ISO timestamp
+    ttl: number;
   };
 }
 
@@ -37,8 +36,6 @@ export interface CreateMachineRequest {
   radius: number;
   address: string;
   status: 'active' | 'inactive' | 'maintenance' | 'offline';
-  last_known_lat?: number;
-  last_known_lng?: number;
 }
 
 export interface UpdateMachineRequest {

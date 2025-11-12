@@ -1,47 +1,37 @@
 export interface Device {
-  model: string;
-  device_id: string;
-  status: 'active' | 'inactive' | 'maintenance' | 'offline';
   tenant_id: string;
-  machine_id?: string;
-  created_at: string;
-  updated_at: string;
-  linked_time?: string;
-  latest_location: {
-    latitude: number;
-    longitude: number;
-    accuracy: number;
-    timestamp: string;
-    source: string;
-  };
-};
-
-export interface CreateDeviceRequest {
   device_id: string;
+  accuracy: number;
+  country: string;
+  latitude: number;
+  longitude: number;
   model: string;
-  status: 'active' | 'inactive' | 'maintenance' | 'offline';
-  machine_id?: string;
-};
+  site: string;
+  ts: number; // Unix timestamp
+  ts_iso: string; // ISO timestamp
+  ttl: number; // Time to live
+  machine_id?: string; // Linked machine ID
+}
 
-export interface UpdateDeviceRequest {
-  device_id?: string;
-  model?: string;
-  status?: 'active' | 'inactive' | 'maintenance' | 'offline';
-  machine_id?: string;
-};
+export interface PaginationMeta {
+  total: number;
+  limit: number;
+  skip: number;
+  page: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface PaginatedDevicesResponse {
+  success: boolean;
+  data: Device[];
+  pagination: PaginationMeta;
+  message?: string;
+}
 
 export interface DeviceResponse {
   success: boolean;
   data: Device;
   message?: string;
-};
-
-export interface DevicesResponse {
-  success: boolean;
-  data: Device[];
-  message?: string;
-};
-
-export interface LinkDeviceToMachine {
-  machine_id: string;
-};
+}
