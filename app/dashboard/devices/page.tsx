@@ -186,7 +186,7 @@ export default function DevicesPage() {
             <div className="mb-4">
               <div className="relative">
                 <Input 
-                  placeholder="Search by device_id, country, model, site" 
+                  placeholder="Search by device_id, country, model, city" 
                   className="bg-input border-border pr-10"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
@@ -233,7 +233,7 @@ export default function DevicesPage() {
                     <tr className="border-b border-border">
                       <th className="text-left py-3 px-4 font-medium text-foreground">Device ID</th>
                       <th className="text-left py-3 px-4 font-medium text-foreground">Model</th>
-                      <th className="text-left py-3 px-4 font-medium text-foreground">Site</th>
+                      <th className="text-left py-3 px-4 font-medium text-foreground">City</th>
                       <th className="text-left py-3 px-4 font-medium text-foreground">Country</th>
                       <th className="text-left py-3 px-4 font-medium text-foreground">Location</th>
                       <th className="text-left py-3 px-4 font-medium text-foreground">Last Update</th>
@@ -251,7 +251,7 @@ export default function DevicesPage() {
                         <tr key={device.device_id} className="border-b border-border hover:bg-muted/50">
                           <td className="py-3 px-4 text-foreground font-medium">{device.device_id}</td>
                           <td className="py-3 px-4 text-foreground">{device.model || "-"}</td>
-                          <td className="py-3 px-4 text-foreground">{device.site || "-"}</td>
+                          <td className="py-3 px-4 text-foreground">{device.city || "-"}</td>
                           <td className="py-3 px-4 text-foreground">{device.country || "-"}</td>
                           <td className="py-3 px-4 text-foreground text-xs font-mono">
                             {device.latitude != null && device.longitude != null

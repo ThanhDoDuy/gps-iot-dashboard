@@ -191,7 +191,6 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
               <Select
                 value={formData.role_id}
                 onValueChange={(value) => {
-                  console.log('Selected role value:', value);
                   setFormData(prev => ({ ...prev, role_id: value }));
                 }}
                 required
@@ -206,7 +205,6 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map((role, index) => {
-                    console.log('Role item:', { id: role.role_id, name: role.name });
                     return (
                       <SelectItem key={role.role_id || `role-${index}`} value={role.role_id}>
                         {role.name}

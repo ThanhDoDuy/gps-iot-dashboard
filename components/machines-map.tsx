@@ -72,6 +72,7 @@ export function MachinesMap({
   radiusKm,
   selectable = false
 }: MachinesMapProps) {
+
   // If selectable mode, always show map even without machines
   // Otherwise, show empty state if no machines
   if (!selectable && machines.length === 0) {
@@ -163,6 +164,11 @@ export function MachinesMap({
           const lat = machine.device?.latitude ?? machine.lat
           const lng = machine.device?.longitude ?? machine.lng
           const isActive = machine.status === "active"
+          
+          // Validate coordinates
+          if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+            return null
+          }
           
           return (
             <div key={machine.machine_id}>

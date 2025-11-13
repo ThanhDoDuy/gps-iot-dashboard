@@ -37,22 +37,39 @@ export default function RadiusFilterPage() {
   const [cities, setCities] = useState<Record<string, City[]>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingLocations, setIsLoadingLocations] = useState(true)
-  const [countryCode, setCountryCode] = useState<string>("")
-  const [cityCode, setCityCode] = useState<string>("")
+  const [countryCode, setCountryCode] = useState<string>("vn")
+  const [cityCode, setCityCode] = useState<string>("hcm")
   const [centerPoint, setCenterPoint] = useState<{ lat: number; lng: number } | null>(null)
   const [radiusKm, setRadiusKm] = useState<string>("5")
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null)
   const [showList, setShowList] = useState(false)
 
-  const fetchMachinesByRadius = async () => {
-    if (!isAuthenticated || !accessToken || !centerPoint || !countryCode || !cityCode) {
-      if (!centerPoint) {
-        toast({
-          title: "No Location Selected",
-          description: "Please click on the map to select a location first",
-          variant: "destructive",
-        })
-      }
+  // Fetch machines by radius - only when search button is clicked
+  const handleSearch = async () => {
+    if (!isAuthenticated || !accessToken) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to search for machines",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!centerPoint) {
+      toast({
+        title: "No Location Selected",
+        description: "Please click on the map to select a location first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!countryCode || !cityCode) {
+      toast({
+        title: "Location Filter Required",
+        description: "Please select both country and city",
+        variant: "destructive",
+      })
       return
     }
 
@@ -68,6 +85,7 @@ export default function RadiusFilterPage() {
 
     try {
       setIsLoading(true)
+      
       const response = await machinesApi.filterMachinesByRadius(
         accessToken,
         countryCode,
@@ -76,12 +94,28 @@ export default function RadiusFilterPage() {
         centerPoint.lng,
         radiusNum
       )
-      setMachines(response.data || [])
+      
+      const machinesData = response.data || []
+      setMachines(machinesData)
+      
+      if (machinesData.length === 0) {
+        toast({
+          title: "No Machines Found",
+          description: `No machines found within ${radiusNum} km of the selected location`,
+          variant: "default",
+        })
+      } else {
+        toast({
+          title: "Success",
+          description: `Found ${machinesData.length} machine(s) within ${radiusNum} km`,
+          variant: "default",
+        })
+      }
     } catch (error: any) {
-      console.error("Error fetching machines by radius:", error)
+      const errorMessage = error.message || error.response?.data?.message || "Failed to fetch machines"
       toast({
         title: "Error",
-        description: error.message || "Failed to fetch machines by radius",
+        description: errorMessage,
         variant: "destructive",
       })
       setMachines([])
@@ -105,11 +139,6 @@ export default function RadiusFilterPage() {
       const countriesData = countriesResponse.data || []
       setCountries(countriesData)
 
-      // Set default country if available
-      if (countriesData.length > 0 && !countryCode) {
-        setCountryCode(countriesData[0].country_code)
-      }
-
       // Fetch cities for each country
       const citiesMap: Record<string, City[]> = {}
       for (const country of countriesData) {
@@ -117,25 +146,36 @@ export default function RadiusFilterPage() {
           const citiesResponse = await locationsApi.getCities(accessToken, country.country_code)
           citiesMap[country.country_code] = citiesResponse.data || []
         } catch (error) {
-          console.error(`Error fetching cities for ${country.country_code}:`, error)
           citiesMap[country.country_code] = []
         }
       }
       setCities(citiesMap)
 
-      // Set default city for default country
-      if (countriesData.length > 0 && !cityCode) {
-        const defaultCountryCode = countriesData[0].country_code
-        const defaultCities = citiesMap[defaultCountryCode] || []
-        if (defaultCities.length > 0) {
-          setCityCode(defaultCities[0].city_code)
+      // Set default to vn and hcm if available
+      if (countriesData.length > 0) {
+        const vnCountry = countriesData.find(c => c.country_code === "vn")
+        if (vnCountry && !countryCode) {
+          setCountryCode("vn")
+          const vnCities = citiesMap["vn"] || []
+          const hcmCity = vnCities.find(c => c.city_code === "hcm")
+          if (hcmCity && !cityCode) {
+            setCityCode("hcm")
+          } else if (vnCities.length > 0 && !cityCode) {
+            setCityCode(vnCities[0].city_code)
+          }
+        } else if (!countryCode) {
+          setCountryCode(countriesData[0].country_code)
+          const defaultCities = citiesMap[countriesData[0].country_code] || []
+          if (defaultCities.length > 0 && !cityCode) {
+            setCityCode(defaultCities[0].city_code)
+          }
         }
       }
     } catch (error: any) {
-      console.error("Error fetching locations:", error)
+      const errorMessage = error.message || error.response?.data?.message || "Failed to fetch locations"
       toast({
         title: "Error",
-        description: error.message || "Failed to fetch locations",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -167,7 +207,7 @@ export default function RadiusFilterPage() {
             setCityCode("")
           }
         } catch (error) {
-          console.error(`Error fetching cities for ${countryCode}:`, error)
+          // Error fetching cities
         }
       }
       fetchCitiesForCountry()
@@ -175,16 +215,25 @@ export default function RadiusFilterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countryCode, accessToken, isAuthenticated])
 
+
   const handleClearFilters = () => {
-    // Reset to first country and city if available
+    // Reset to vn and hcm if available, otherwise first country/city
     if (countries.length > 0) {
-      const firstCountry = countries[0]
-      setCountryCode(firstCountry.country_code)
-      const firstCities = cities[firstCountry.country_code] || []
-      setCityCode(firstCities.length > 0 ? firstCities[0].city_code : "")
+      const vnCountry = countries.find(c => c.country_code === "vn")
+      if (vnCountry) {
+        setCountryCode("vn")
+        const vnCities = cities["vn"] || []
+        const hcmCity = vnCities.find(c => c.city_code === "hcm")
+        setCityCode(hcmCity ? "hcm" : (vnCities.length > 0 ? vnCities[0].city_code : ""))
+      } else {
+        const firstCountry = countries[0]
+        setCountryCode(firstCountry.country_code)
+        const firstCities = cities[firstCountry.country_code] || []
+        setCityCode(firstCities.length > 0 ? firstCities[0].city_code : "")
+      }
     } else {
-      setCountryCode("")
-      setCityCode("")
+      setCountryCode("vn")
+      setCityCode("hcm")
     }
     setCenterPoint(null)
     setRadiusKm("5")
@@ -235,9 +284,11 @@ export default function RadiusFilterPage() {
                   <div className="relative">
                     <Select value={countryCode || undefined} onValueChange={(value) => {
                       setCountryCode(value)
-                      // Clear city when country changes
+                      // Clear city and machines when country changes
                       if (value !== countryCode) {
                         setCityCode("")
+                        setMachines([])
+                        setCenterPoint(null)
                       }
                     }}>
                       <SelectTrigger>
@@ -276,7 +327,12 @@ export default function RadiusFilterPage() {
                   <div className="relative">
                     <Select
                       value={cityCode || undefined}
-                      onValueChange={setCityCode}
+                      onValueChange={(value) => {
+                        setCityCode(value)
+                        // Clear center point and reset machines when city changes
+                        setCenterPoint(null)
+                        setMachines([])
+                      }}
                       disabled={!countryCode}
                     >
                       <SelectTrigger>
@@ -333,7 +389,7 @@ export default function RadiusFilterPage() {
                   </div>
                   <div className="flex items-end">
                     <Button
-                      onClick={fetchMachinesByRadius}
+                      onClick={handleSearch}
                       disabled={!centerPoint || !countryCode || !cityCode || isLoading}
                       className="flex items-center gap-2"
                     >
@@ -363,7 +419,7 @@ export default function RadiusFilterPage() {
                   </div>
                 )}
                 <p className="mt-3 text-xs text-muted-foreground">
-                  * Click on the map below to select a location, then enter radius and click Search
+                  * Select country and city, click on the map to choose location, enter radius, then click Search.
                 </p>
               </div>
             </div>

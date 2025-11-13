@@ -18,7 +18,6 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     // Redirect to login if not authenticated or no token
     if (!isAuthenticated || !accessToken || !refreshToken) {
-      console.log("🔒 AuthGuard: Redirecting to login - isAuthenticated:", isAuthenticated, "accessToken:", accessToken ? "exists" : "null")
       router.push("/")
     }
   }, [isAuthenticated, accessToken, isLoading, router])

@@ -131,12 +131,9 @@ class ApiClient {
         },
       });
     } catch (error: any) {
-      console.log("🔍 API Error caught:", error.message, "Type:", typeof error.message, "Status:", error.statusCode);
-      
       // 403 Forbidden = Authorization issue (no permission) → throw error, let UI handle it
       // Don't redirect because user is authenticated but lacks permission for this resource
       if (typeof window !== 'undefined' && error.statusCode === 403) {
-        console.log("🔄 Got 403 Forbidden error - user lacks permission for this resource");
         // Re-throw the error so UI can display appropriate message (e.g., "You don't have permission")
         throw error;
       }

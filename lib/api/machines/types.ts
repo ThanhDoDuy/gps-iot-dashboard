@@ -21,7 +21,7 @@ export interface Machine {
     latitude: number;
     longitude: number;
     model: string;
-    site: string;
+    city: string;
     ts: number; // Unix timestamp
     ts_iso: string; // ISO timestamp
     ttl: number;

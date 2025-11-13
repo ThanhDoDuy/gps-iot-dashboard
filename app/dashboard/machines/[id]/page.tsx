@@ -414,8 +414,8 @@ export default function MachineDetailPage() {
                       <span className="text-sm font-medium">{machine.device.model}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Site:</span>
-                      <span className="text-sm">{machine.device.site || "-"}</span>
+                      <span className="text-sm text-muted-foreground">City:</span>
+                      <span className="text-sm">{machine.device.city || "-"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Country:</span>

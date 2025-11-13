@@ -13,6 +13,7 @@ const menuItems = [
   { label: "Machines", href: "/dashboard/machines", icon: "☕" },
   { label: "Devices", href: "/dashboard/devices", icon: "📱" },
   { label: "Mapping", href: "/dashboard/mapping", icon: "🗺️" },
+  { label: "Locations", href: "/dashboard/locations", icon: "🌍" },
   { label: "Users", href: "/dashboard/users", icon: "👥" },
   { label: "Role & Permission", href: "/dashboard/roles", icon: "🔐" },
   { label: "Settings", href: "/dashboard/settings", icon: "⚙️" },

@@ -6,7 +6,7 @@ export interface GetAllDevicesParams {
   skip?: number;
   search?: string;
   country?: string;
-  site?: string;
+  city?: string;
 }
 
 export const devicesApi = {
@@ -28,8 +28,8 @@ export const devicesApi = {
     if (params?.country) {
       queryParams.append('country', params.country);
     }
-    if (params?.site) {
-      queryParams.append('site', params.site);
+    if (params?.city) {
+      queryParams.append('city', params.city);
     }
 
     const queryString = queryParams.toString();
