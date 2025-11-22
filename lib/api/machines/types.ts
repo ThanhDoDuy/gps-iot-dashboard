@@ -28,6 +28,23 @@ export interface Machine {
   };
 }
 
+export interface PaginationMeta {
+  total: number;
+  limit: number;
+  skip: number;
+  page: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface PaginatedMachinesResponse {
+  success: boolean;
+  data: Machine[];
+  pagination: PaginationMeta;
+  message?: string;
+}
+
 export interface CreateMachineRequest {
   machine_id: string;
   name: string;

@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/auth-store"
 import { machinesApi } from "@/lib/api/machines"
-import { locationsApi } from "@/lib/api/locations"
 import { Machine } from "@/lib/api/machines/types"
 import { Country, City } from "@/lib/api/locations/types"
 
@@ -33,6 +32,7 @@ export default function RadiusFilterPage() {
   const { toast } = useToast()
   const { accessToken, isAuthenticated } = useAuthStore()
   const [machines, setMachines] = useState<Machine[]>([])
+  const [allMachines, setAllMachines] = useState<Machine[]>([]) // Store all machines for extracting countries/cities
   const [countries, setCountries] = useState<Country[]>([])
   const [cities, setCities] = useState<Record<string, City[]>>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -124,96 +124,140 @@ export default function RadiusFilterPage() {
     }
   }
 
-  // Fetch locations (countries and cities)
-  const fetchLocations = async () => {
+  // Fetch all machines to extract countries and cities
+  const fetchAllMachinesForLocations = async () => {
     if (!isAuthenticated || !accessToken) {
       setIsLoadingLocations(false)
+      return
+    }
+
+    // If already loaded, don't fetch again
+    if (allMachines.length > 0) {
+      extractCountriesAndCities(allMachines)
       return
     }
 
     try {
       setIsLoadingLocations(true)
       
-      // Fetch all countries
-      const countriesResponse = await locationsApi.getCountries(accessToken)
-      const countriesData = countriesResponse.data || []
-      setCountries(countriesData)
+      // Fetch all machines without filters to get all countries/cities
+      let allMachinesData: Machine[] = []
+      let skip = 0
+      const fetchLimit = 100
+      let hasMore = true
 
-      // Fetch cities for each country
-      const citiesMap: Record<string, City[]> = {}
-      for (const country of countriesData) {
-        try {
-          const citiesResponse = await locationsApi.getCities(accessToken, country.country_code)
-          citiesMap[country.country_code] = citiesResponse.data || []
-        } catch (error) {
-          citiesMap[country.country_code] = []
-        }
+      while (hasMore) {
+        const response = await machinesApi.getMachines(accessToken, {
+          limit: fetchLimit,
+          skip,
+        })
+        allMachinesData = [...allMachinesData, ...response.data]
+        hasMore = response.pagination.hasNext
+        skip += fetchLimit
       }
-      setCities(citiesMap)
 
-      // Set default to vn and hcm if available
-      if (countriesData.length > 0) {
-        const vnCountry = countriesData.find(c => c.country_code === "vn")
-        if (vnCountry && !countryCode) {
-          setCountryCode("vn")
-          const vnCities = citiesMap["vn"] || []
-          const hcmCity = vnCities.find(c => c.city_code === "hcm")
-          if (hcmCity && !cityCode) {
-            setCityCode("hcm")
-          } else if (vnCities.length > 0 && !cityCode) {
-            setCityCode(vnCities[0].city_code)
-          }
-        } else if (!countryCode) {
-          setCountryCode(countriesData[0].country_code)
-          const defaultCities = citiesMap[countriesData[0].country_code] || []
-          if (defaultCities.length > 0 && !cityCode) {
-            setCityCode(defaultCities[0].city_code)
-          }
-        }
-      }
+      setAllMachines(allMachinesData)
+      extractCountriesAndCities(allMachinesData)
     } catch (error: any) {
-      const errorMessage = error.message || error.response?.data?.message || "Failed to fetch locations"
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      })
+      console.error("Error fetching all machines for locations:", error)
+      // Don't show error toast, just log it
     } finally {
       setIsLoadingLocations(false)
     }
   }
 
-  useEffect(() => {
-    fetchLocations()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, isAuthenticated])
+  // Extract countries and cities from machines data
+  const extractCountriesAndCities = (machinesData: Machine[]) => {
+    interface CountryInfo {
+      country_code: string;
+      name: string;
+    }
+    interface CityInfo {
+      city_code: string;
+      name: string;
+      country_code: string;
+    }
 
-  // Fetch cities when country changes
-  useEffect(() => {
-    if (countryCode && accessToken && isAuthenticated) {
-      const fetchCitiesForCountry = async () => {
-        try {
-          const citiesResponse = await locationsApi.getCities(accessToken, countryCode)
-          setCities(prev => ({
-            ...prev,
-            [countryCode]: citiesResponse.data || []
-          }))
-          
-          // Set first city as default if cityCode is empty
-          const newCities = citiesResponse.data || []
-          if (newCities.length > 0 && !cityCode) {
-            setCityCode(newCities[0].city_code)
-          } else if (newCities.length === 0) {
-            setCityCode("")
+    const countriesMap: Record<string, CountryInfo> = {}
+    const citiesMap: Record<string, Record<string, CityInfo>> = {}
+
+    machinesData.forEach(machine => {
+      if (machine.device?.country) {
+        const countryCode = machine.device.country.toLowerCase()
+        if (!countriesMap[countryCode]) {
+          countriesMap[countryCode] = {
+            country_code: countryCode,
+            name: countryCode.toUpperCase()
           }
-        } catch (error) {
-          // Error fetching cities
+        }
+
+        if (machine.device.city) {
+          const cityCode = machine.device.city.toLowerCase()
+          if (!citiesMap[countryCode]) {
+            citiesMap[countryCode] = {}
+          }
+          if (!citiesMap[countryCode][cityCode]) {
+            citiesMap[countryCode][cityCode] = {
+              city_code: cityCode,
+              name: cityCode.toUpperCase(),
+              country_code: countryCode
+            }
+          }
         }
       }
-      fetchCitiesForCountry()
+    })
+
+    // Convert to arrays
+    const countriesData: Country[] = Object.values(countriesMap).map((country) => ({
+      country_code: country.country_code,
+      city_code: '#' as const,
+      name: country.name,
+      is_active: true,
+      created_at: new Date().toISOString()
+    }))
+
+    const citiesData: Record<string, City[]> = {}
+    Object.keys(citiesMap).forEach(countryCode => {
+      const countryCities = citiesMap[countryCode]
+      citiesData[countryCode] = Object.values(countryCities).map((city) => ({
+        country_code: city.country_code,
+        city_code: city.city_code,
+        name: city.name,
+        is_active: true,
+        created_at: new Date().toISOString()
+      }))
+    })
+
+    setCountries(countriesData)
+    setCities(citiesData)
+
+    // Set default to vn and hcm if available
+    if (countriesData.length > 0) {
+      const vnCountry = countriesData.find(c => c.country_code === "vn")
+      if (vnCountry && !countryCode) {
+        setCountryCode("vn")
+        const vnCities = citiesData["vn"] || []
+        const hcmCity = vnCities.find(c => c.city_code === "hcm")
+        if (hcmCity && !cityCode) {
+          setCityCode("hcm")
+        } else if (vnCities.length > 0 && !cityCode) {
+          setCityCode(vnCities[0].city_code)
+        }
+      } else if (!countryCode) {
+        setCountryCode(countriesData[0].country_code)
+        const defaultCities = citiesData[countriesData[0].country_code] || []
+        if (defaultCities.length > 0 && !cityCode) {
+          setCityCode(defaultCities[0].city_code)
+        }
+      }
     }
+  }
+
+  useEffect(() => {
+    // Fetch all machines (without filters) to populate country/city dropdowns
+    fetchAllMachinesForLocations()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countryCode, accessToken, isAuthenticated])
+  }, [accessToken, isAuthenticated])
 
 
   const handleClearFilters = () => {

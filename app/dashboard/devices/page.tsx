@@ -18,20 +18,34 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Country, City } from "@/lib/api/locations/types"
 import { Search } from "lucide-react"
 
 export default function DevicesPage() {
   const { accessToken, isAuthenticated } = useAuthStore();
   const [devices, setDevices] = useState<Device[]>([]);
+  const [allDevices, setAllDevices] = useState<Device[]>([]); // Store all devices for extracting countries/cities
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [countryFilter, setCountryFilter] = useState<string>("vn");
+  const [cityFilter, setCityFilter] = useState<string>("hcm");
+  const [countries, setCountries] = useState<Country[]>([]);
+  const [cities, setCities] = useState<Record<string, City[]>>({});
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [limit] = useState(10);
 
-  const fetchDevices = async (page: number = 1, search?: string) => {
+  const fetchDevices = async (page: number = 1, search?: string, country?: string, city?: string) => {
     if (!isAuthenticated || !accessToken) {
       setIsLoading(false);
       return;
@@ -44,7 +58,9 @@ export default function DevicesPage() {
       const response = await devicesApi.getAllDevices(accessToken, {
         limit,
         skip,
-        search: search || undefined
+        search: search || undefined,
+        country: country || undefined,
+        city: city || undefined
       });
       console.log("Devices response:", response);
       setDevices(response.data);
@@ -57,9 +73,121 @@ export default function DevicesPage() {
     }
   };
 
+  // Fetch all devices to extract countries and cities
+  const fetchAllDevicesForLocations = async () => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
+
+    // If already loaded, don't fetch again
+    if (allDevices.length > 0) {
+      extractCountriesAndCities(allDevices)
+      return
+    }
+
+    try {
+      setIsLoadingLocations(true)
+      
+      // Fetch all devices without filters to get all countries/cities
+      let allDevicesData: Device[] = []
+      let skip = 0
+      const fetchLimit = 100
+      let hasMore = true
+
+      while (hasMore) {
+        const response = await devicesApi.getAllDevices(accessToken, {
+          limit: fetchLimit,
+          skip,
+        })
+        allDevicesData = [...allDevicesData, ...response.data]
+        hasMore = response.pagination.hasNext
+        skip += fetchLimit
+      }
+
+      setAllDevices(allDevicesData)
+      extractCountriesAndCities(allDevicesData)
+    } catch (error: any) {
+      console.error("Error fetching all devices for locations:", error)
+      // Don't show error toast, just log it
+    } finally {
+      setIsLoadingLocations(false)
+    }
+  }
+
+  // Extract countries and cities from devices data
+  const extractCountriesAndCities = (devicesData: Device[]) => {
+    interface CountryInfo {
+      country_code: string;
+      name: string;
+    }
+    interface CityInfo {
+      city_code: string;
+      name: string;
+      country_code: string;
+    }
+
+    const countriesMap: Record<string, CountryInfo> = {}
+    const citiesMap: Record<string, Record<string, CityInfo>> = {}
+
+    devicesData.forEach(device => {
+      if (device.country) {
+        const countryCode = device.country.toLowerCase()
+        if (!countriesMap[countryCode]) {
+          countriesMap[countryCode] = {
+            country_code: countryCode,
+            name: countryCode.toUpperCase()
+          }
+        }
+
+        if (device.city) {
+          const cityCode = device.city.toLowerCase()
+          if (!citiesMap[countryCode]) {
+            citiesMap[countryCode] = {}
+          }
+          if (!citiesMap[countryCode][cityCode]) {
+            citiesMap[countryCode][cityCode] = {
+              city_code: cityCode,
+              name: cityCode.toUpperCase(),
+              country_code: countryCode
+            }
+          }
+        }
+      }
+    })
+
+    // Convert to arrays
+    const countriesData: Country[] = Object.values(countriesMap).map((country) => ({
+      country_code: country.country_code,
+      city_code: '#' as const,
+      name: country.name,
+      is_active: true,
+      created_at: new Date().toISOString()
+    }))
+
+    const citiesData: Record<string, City[]> = {}
+    Object.keys(citiesMap).forEach(countryCode => {
+      const countryCities = citiesMap[countryCode]
+      citiesData[countryCode] = Object.values(countryCities).map((city) => ({
+        country_code: city.country_code,
+        city_code: city.city_code,
+        name: city.name,
+        is_active: true,
+        created_at: new Date().toISOString()
+      }))
+    })
+
+    setCountries(countriesData)
+    setCities(citiesData)
+  }
+
   useEffect(() => {
-    fetchDevices(currentPage, searchTerm);
-  }, [isAuthenticated, accessToken, currentPage, searchTerm]);
+    fetchDevices(currentPage, searchTerm, countryFilter, cityFilter);
+  }, [isAuthenticated, accessToken, currentPage, searchTerm, countryFilter, cityFilter]);
+
+  useEffect(() => {
+    // Fetch all devices (without filters) to populate country/city dropdowns
+    fetchAllDevicesForLocations();
+  }, [isAuthenticated, accessToken]); // Run once on mount
 
   const handleSearch = () => {
     setSearchTerm(searchInput);
@@ -70,6 +198,19 @@ export default function DevicesPage() {
     if (e.key === 'Enter') {
       handleSearch();
     }
+  };
+
+  const availableCities = countryFilter && countryFilter !== "all" ? cities[countryFilter] || [] : [];
+
+  const handleCountryFilterChange = (value: string) => {
+    setCountryFilter(value === "all" ? "" : value);
+    setCityFilter(""); // Reset city filter when country changes
+    setCurrentPage(1);
+  };
+
+  const handleCityFilterChange = (value: string) => {
+    setCityFilter(value === "all" ? "" : value);
+    setCurrentPage(1);
   };
 
   const handlePageChange = (page: number) => {
@@ -183,7 +324,7 @@ export default function DevicesPage() {
             <CardDescription>All devices in your network</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="mb-4">
+            <div className="mb-4 space-y-4">
               <div className="relative">
                 <Input 
                   placeholder="Search by device_id, country, model, city" 
@@ -201,6 +342,55 @@ export default function DevicesPage() {
                 >
                   <Search className="h-4 w-4 text-muted-foreground" />
                 </Button>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-sm font-medium text-foreground">Filter by Country:</label>
+                <Select
+                  value={countryFilter || "all"}
+                  onValueChange={handleCountryFilterChange}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select country" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Countries</SelectItem>
+                    {isLoadingLocations ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : (
+                      countries.map((country) => (
+                        <SelectItem key={country.country_code} value={country.country_code}>
+                          {country.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+
+                <label className="text-sm font-medium text-foreground">Filter by City:</label>
+                <Select
+                  value={cityFilter || "all"}
+                  onValueChange={handleCityFilterChange}
+                  disabled={!countryFilter || countryFilter === "all"}
+                >
+                  <SelectTrigger className="w-48" disabled={!countryFilter || countryFilter === "all"}>
+                    <SelectValue placeholder={countryFilter && countryFilter !== "all" ? "Select city" : "Select country first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Cities</SelectItem>
+                    {isLoadingLocations ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : availableCities.length > 0 ? (
+                      availableCities.map((city) => (
+                        <SelectItem key={city.city_code} value={city.city_code}>
+                          {city.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="no-cities" disabled>No cities available</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             

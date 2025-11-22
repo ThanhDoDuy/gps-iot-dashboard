@@ -9,9 +9,18 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { machinesApi } from "@/lib/api/machines"
 import { useAuthStore } from "@/lib/auth-store"
-import { Machine } from "@/lib/api/machines/types"
+import { Machine, PaginationMeta } from "@/lib/api/machines/types"
 import { useToast } from "@/hooks/use-toast"
 import { Edit, Trash2, MoreHorizontal, Save, X, Map, Plus, MapPin, Loader2, Search } from "lucide-react"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,17 +30,35 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { MapPicker } from "@/components/ui/map-picker"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { locationsApi } from "@/lib/api/locations"
+import { Country, City } from "@/lib/api/locations/types"
 
 export default function MachinesPage() {
   const router = useRouter();
   const { accessToken, isAuthenticated } = useAuthStore();
   const { toast } = useToast();
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [allMachines, setAllMachines] = useState<Machine[]>([]); // Store all machines for extracting countries/cities
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [countryFilter, setCountryFilter] = useState<string>("vn");
+  const [cityFilter, setCityFilter] = useState<string>("hcm");
+  const [countries, setCountries] = useState<Country[]>([]);
+  const [cities, setCities] = useState<Record<string, City[]>>({});
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [limit] = useState(10);
   const [deletingMachine, setDeletingMachine] = useState<string | null>(null);
   const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [editFormData, setEditFormData] = useState({
@@ -60,8 +87,7 @@ export default function MachinesPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [showCreateMapModal, setShowCreateMapModal] = useState(false);
 
-  const fetchMachines = async () => {
-    
+  const fetchMachines = async (page: number = 1, search?: string, country?: string, city?: string, status?: string) => {
     if (!isAuthenticated || !accessToken) {
       setIsLoading(false);
       return;
@@ -70,8 +96,17 @@ export default function MachinesPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await machinesApi.getMachines(accessToken);
-      setMachines(response.data)
+      const skip = (page - 1) * limit;
+      const response = await machinesApi.getMachines(accessToken, {
+        limit,
+        skip,
+        search: search || undefined,
+        country: country || undefined,
+        city: city || undefined,
+        status: status && status !== 'all' ? status : undefined
+      });
+      setMachines(response.data);
+      setPagination(response.pagination);
     } catch (err) {
       setError('Failed to load machines')
     } finally {
@@ -79,32 +114,177 @@ export default function MachinesPage() {
     }
   }
 
-  useEffect(() => {
-    fetchMachines()
-  }, [isAuthenticated, accessToken]);
+  // Fetch all machines to extract countries and cities (similar to dashboard)
+  const fetchAllMachinesForLocations = async () => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
 
-  const filteredMachines = machines.filter(machine => {
-    // Status filter
-    if (statusFilter !== "all" && machine.status !== statusFilter) {
-      return false;
+    // If already loaded, don't fetch again
+    if (allMachines.length > 0) {
+      extractCountriesAndCities(allMachines)
+      return
     }
-    
-    // Search filter
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        machine.name.toLowerCase().includes(searchLower) ||
-        machine.machine_id.toLowerCase().includes(searchLower) ||
-        machine.address.toLowerCase().includes(searchLower) ||
-        (machine.device_id && machine.device_id.toLowerCase().includes(searchLower))
-      );
+
+    try {
+      setIsLoadingLocations(true)
+      
+      // Fetch all machines without filters to get all countries/cities
+      let allMachinesData: Machine[] = []
+      let skip = 0
+      const fetchLimit = 100
+      let hasMore = true
+
+      while (hasMore) {
+        const response = await machinesApi.getMachines(accessToken, {
+          limit: fetchLimit,
+          skip,
+        })
+        allMachinesData = [...allMachinesData, ...response.data]
+        hasMore = response.pagination.hasNext
+        skip += fetchLimit
+      }
+
+      setAllMachines(allMachinesData)
+      extractCountriesAndCities(allMachinesData)
+    } catch (error: any) {
+      console.error("Error fetching all machines for locations:", error)
+      // Don't show error toast, just log it
+    } finally {
+      setIsLoadingLocations(false)
     }
-    
-    return true;
-  });
+  }
+
+  // Extract countries and cities from machines data
+  const extractCountriesAndCities = (machinesData: Machine[]) => {
+    interface CountryInfo {
+      country_code: string;
+      name: string;
+    }
+    interface CityInfo {
+      city_code: string;
+      name: string;
+      country_code: string;
+    }
+
+    const countriesMap: Record<string, CountryInfo> = {}
+    const citiesMap: Record<string, Record<string, CityInfo>> = {}
+
+    machinesData.forEach(machine => {
+      if (machine.device?.country) {
+        const countryCode = machine.device.country.toLowerCase()
+        if (!countriesMap[countryCode]) {
+          countriesMap[countryCode] = {
+            country_code: countryCode,
+            name: countryCode.toUpperCase()
+          }
+        }
+
+        if (machine.device.city) {
+          const cityCode = machine.device.city.toLowerCase()
+          if (!citiesMap[countryCode]) {
+            citiesMap[countryCode] = {}
+          }
+          if (!citiesMap[countryCode][cityCode]) {
+            citiesMap[countryCode][cityCode] = {
+              city_code: cityCode,
+              name: cityCode.toUpperCase(),
+              country_code: countryCode
+            }
+          }
+        }
+      }
+    })
+
+    // Convert to arrays
+    const countriesData: Country[] = Object.values(countriesMap).map((country) => ({
+      country_code: country.country_code,
+      city_code: '#' as const,
+      name: country.name,
+      is_active: true,
+      created_at: new Date().toISOString()
+    }))
+
+    const citiesData: Record<string, City[]> = {}
+    Object.keys(citiesMap).forEach(countryCode => {
+      const countryCities = citiesMap[countryCode]
+      citiesData[countryCode] = Object.values(countryCities).map((city) => ({
+        country_code: city.country_code,
+        city_code: city.city_code,
+        name: city.name,
+        is_active: true,
+        created_at: new Date().toISOString()
+      }))
+    })
+
+    setCountries(countriesData)
+    setCities(citiesData)
+  }
+
+  // Fetch countries - only when dropdown is opened (extract from allMachines)
+  const fetchCountries = async () => {
+    if (!isAuthenticated || !accessToken) {
+      return
+    }
+
+    // If already loaded, don't fetch again
+    if (countries.length > 0) {
+      return
+    }
+
+    // Fetch all machines first to extract countries/cities
+    await fetchAllMachinesForLocations()
+  }
+
+  // Fetch cities for a country - only when dropdown is opened (extract from allMachines)
+  const fetchCitiesForCountry = async (countryCodeToFetch: string) => {
+    if (!isAuthenticated || !accessToken || !countryCodeToFetch) {
+      return
+    }
+
+    // If already loaded for this country, don't fetch again
+    if (cities[countryCodeToFetch] && cities[countryCodeToFetch].length > 0) {
+      return
+    }
+
+    // Fetch all machines first if not already loaded
+    if (allMachines.length === 0) {
+      await fetchAllMachinesForLocations()
+    } else {
+      extractCountriesAndCities(allMachines)
+    }
+  }
+
+  useEffect(() => {
+    fetchMachines(currentPage, searchTerm, countryFilter, cityFilter, statusFilter);
+  }, [isAuthenticated, accessToken, currentPage, searchTerm, countryFilter, cityFilter, statusFilter]);
+
+  // Get available cities for selected country
+  const availableCities = countryFilter ? cities[countryFilter] || [] : []
+
+  const filteredMachines = machines;
 
   const handleSearch = () => {
     setSearchTerm(searchInput);
+    setCurrentPage(1);
+  };
+
+  const handleCountryFilterChange = (value: string) => {
+    // Treat "all" as clearing the filter
+    setCountryFilter(value === "vn" ? "" : value);
+    setCityFilter(""); // Clear city when country changes
+    setCurrentPage(1);
+  };
+
+  const handleCityFilterChange = (value: string) => {
+    // Treat "all" as clearing the filter
+    setCityFilter(value === "hc" ? "" : value);
+    setCurrentPage(1);
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -252,7 +432,7 @@ export default function MachinesPage() {
       });
       
       // Refresh machines list
-      await fetchMachines();
+      await fetchMachines(currentPage, searchTerm, countryFilter, cityFilter, statusFilter);
       
       // Close dialog
       setShowDeleteDialog(false);
@@ -447,7 +627,7 @@ export default function MachinesPage() {
       });
       
       // Refresh machines list
-      await fetchMachines();
+      await fetchMachines(currentPage, searchTerm, countryFilter, cityFilter, statusFilter);
       
       // Close modal
       setShowCreateModal(false);
@@ -480,6 +660,73 @@ export default function MachinesPage() {
     });
     setCreateError(null);
   };
+
+  const renderPagination = () => {
+    if (!pagination || pagination.totalPages <= 1) return null;
+
+    const pages = [];
+    const totalPages = pagination.totalPages;
+    const current = pagination.page;
+
+    // Always show first page
+    if (current > 3) {
+      pages.push(1);
+      if (current > 4) pages.push('ellipsis-start');
+    }
+
+    // Show pages around current page
+    for (let i = Math.max(1, current - 2); i <= Math.min(totalPages, current + 2); i++) {
+      pages.push(i);
+    }
+
+    // Always show last page
+    if (current < totalPages - 2) {
+      if (current < totalPages - 3) pages.push('ellipsis-end');
+      pages.push(totalPages);
+    }
+
+    return (
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              onClick={() => pagination.hasPrev && handlePageChange(current - 1)}
+              className={!pagination.hasPrev ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+            />
+          </PaginationItem>
+          
+          {pages.map((page, index) => {
+            if (page === 'ellipsis-start' || page === 'ellipsis-end') {
+              return (
+                <PaginationItem key={`ellipsis-${index}`}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              );
+            }
+            return (
+              <PaginationItem key={page}>
+                <PaginationLink
+                  onClick={() => handlePageChange(page as number)}
+                  isActive={current === page}
+                  className="cursor-pointer"
+                >
+                  {page}
+                </PaginationLink>
+              </PaginationItem>
+            );
+          })}
+          
+          <PaginationItem>
+            <PaginationNext
+              onClick={() => pagination.hasNext && handlePageChange(current + 1)}
+              className={!pagination.hasNext ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    );
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -523,26 +770,94 @@ export default function MachinesPage() {
                 </Button>
               </div>
               
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-foreground">Filter by Status:</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-1.5 border border-input bg-background rounded-md text-sm"
-                >
-                  <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="maintenance">Maintenance</option>
-                  <option value="offline">Offline</option>
-                </select>
-              </div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-foreground">Filter by Status:</label>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => {
+                        setStatusFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="px-3 py-1.5 border border-input bg-background rounded-md text-sm"
+                    >
+                      <option value="all">All</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="maintenance">Maintenance</option>
+                      <option value="offline">Offline</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-foreground">Filter by Country:</label>
+                    <Select
+                      value={countryFilter || "all"}
+                      onValueChange={handleCountryFilterChange}
+                      onOpenChange={(open) => {
+                        if (open) {
+                          fetchCountries()
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Countries</SelectItem>
+                        {isLoadingLocations ? (
+                          <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        ) : (
+                          countries.map((country) => (
+                            <SelectItem key={country.country_code} value={country.country_code}>
+                              {country.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-foreground">Filter by City:</label>
+                    <Select
+                      value={cityFilter || "all"}
+                      onValueChange={handleCityFilterChange}
+                      disabled={!countryFilter}
+                      onOpenChange={(open) => {
+                        if (open && countryFilter) {
+                          fetchCitiesForCountry(countryFilter)
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-48" disabled={!countryFilter}>
+                        <SelectValue placeholder={countryFilter ? "Select city" : "Select country first"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Cities</SelectItem>
+                        {isLoadingLocations ? (
+                          <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        ) : !countryFilter ? (
+                          <SelectItem value="no-country" disabled>Select country first</SelectItem>
+                        ) : availableCities.length > 0 ? (
+                          availableCities.map((city) => (
+                            <SelectItem key={city.city_code} value={city.city_code}>
+                              {city.name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-cities" disabled>Click to load cities</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
             </div>
             
             {error && (
               <div className="text-center py-8">
                 <p className="text-destructive mb-4">{error}</p>
-                <Button onClick={fetchMachines} variant="outline">
+                <Button onClick={() => fetchMachines(currentPage, searchTerm)} variant="outline">
                   Retry
                 </Button>
               </div>
@@ -649,6 +964,16 @@ export default function MachinesPage() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {pagination && pagination.total > 0 && (
+              <div className="mt-6 flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing {pagination.skip + 1} to {Math.min(pagination.skip + pagination.limit, pagination.total)} of {pagination.total} machines
+                </div>
+                {renderPagination()}
               </div>
             )}
           </CardContent>

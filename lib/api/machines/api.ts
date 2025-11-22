@@ -4,25 +4,52 @@ import {
   CreateMachineRequest, 
   UpdateMachineRequest, 
   MachineFilters,
-  MachineStatus
+  MachineStatus,
+  PaginatedMachinesResponse
 } from './types';
-import { ApiResponse, PaginationParams } from '../types';
+import { ApiResponse } from '../types';
+
+export interface GetAllMachinesParams {
+  limit?: number;
+  skip?: number;
+  search?: string;
+  country?: string;
+  city?: string;
+  status?: string;
+}
 
 export class MachinesApi {
   async getMachines(
     accessToken: string,
-    params?: PaginationParams & MachineFilters
-  ): Promise<ApiResponse<Machine[]>> {
+    params?: GetAllMachinesParams
+  ): Promise<PaginatedMachinesResponse> {
     const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.sort) queryParams.append('sort', params.sort);
-    if (params?.order) queryParams.append('order', params.order);
-    if (params?.status) queryParams.append('status', params.status);
-    if (params?.search) queryParams.append('search', params.search);
+    
+    if (params?.limit !== undefined) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    if (params?.skip !== undefined) {
+      queryParams.append('skip', params.skip.toString());
+    }
+    if (params?.search) {
+      queryParams.append('search', params.search);
+    }
+    if (params?.country) {
+      queryParams.append('country', params.country);
+    }
+    if (params?.city) {
+      queryParams.append('city', params.city);
+    }
+    if (params?.status) {
+      queryParams.append('status', params.status);
+    }
 
-    const endpoint = `/machines${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    return apiClient.authenticatedRequest<ApiResponse<Machine[]>>(endpoint, accessToken);
+    const queryString = queryParams.toString();
+    const url = `/machines${queryString ? `?${queryString}` : ''}`;
+    
+    return apiClient.authenticatedRequest<PaginatedMachinesResponse>(url, accessToken, {
+      method: 'GET',
+    });
   }
 
   async getMachine(accessToken: string, machineId: string): Promise<ApiResponse<Machine>> {

@@ -7,6 +7,7 @@ import {
   ForgotPasswordRequest,
   ResetPasswordRequest,
   RefreshTokenResponse,
+  UserProfile,
 } from './types';
 import { ApiResponse } from '../types';
 
@@ -46,6 +47,12 @@ export class AuthApi {
 
   async resetPassword(request: ResetPasswordRequest): Promise<ApiResponse<void>> {
     return apiClient.post<ApiResponse<void>>('/auth/reset-password', request);
+  }
+
+  async getProfile(accessToken: string): Promise<ApiResponse<UserProfile>> {
+    return apiClient.authenticatedRequest<ApiResponse<UserProfile>>('/auth/profile', accessToken, {
+      method: 'GET',
+    });
   }
 }
 

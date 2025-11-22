@@ -31,3 +31,13 @@ export interface ResetPasswordRequest {
   token: string;
   newPassword: string;
 }
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  fullName: string;
+  tenantId: string;
+  roleId: string;
+  roleName: string;
+  permissions: string[];
+}

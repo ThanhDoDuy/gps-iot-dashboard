@@ -1,28 +1,38 @@
 "use client"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-
-const menuItems = [
-  { label: "Tenant Info", href: "/dashboard/tenant", icon: "🏢" },
-  { label: "Dashboard", href: "/dashboard", icon: "📊" },
-  { label: "Radius Filter", href: "/dashboard/radius-filter", icon: "🎯" },
-  { label: "Machines", href: "/dashboard/machines", icon: "☕" },
-  { label: "Devices", href: "/dashboard/devices", icon: "📱" },
-  { label: "Mapping", href: "/dashboard/mapping", icon: "🗺️" },
-  { label: "Locations", href: "/dashboard/locations", icon: "🌍" },
-  { label: "Users", href: "/dashboard/users", icon: "👥" },
-  { label: "Role & Permission", href: "/dashboard/roles", icon: "🔐" },
-  { label: "Settings", href: "/dashboard/settings", icon: "⚙️" },
-  { label: "Help & Support", href: "/dashboard/help", icon: "❓" },
-]
+import { useAuthStore } from "@/lib/auth-store"
+import { MENU_ITEMS, filterMenuItemsByPermissions } from "@/lib/permissions"
+import { RolesEnum } from "@/lib/enums/roles.enum"
 
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(true)
   const pathname = usePathname()
+  const router = useRouter()
+  const { permissions, user, logout } = useAuthStore()
+
+  // Filter menu items based on user permissions and role
+  const visibleMenuItems = useMemo(() => {
+    const filtered = filterMenuItemsByPermissions(MENU_ITEMS, permissions)
+    
+    // Additional check for role-based menu items (e.g., Tenants requires super_admin role)
+    return filtered.filter((item) => {
+      // Tenants menu item requires super_admin role
+      if (item.href === "/dashboard/tenants") {
+        return user?.roleId === RolesEnum.SUPER_ADMIN
+      }
+      return true
+    })
+  }, [permissions, user])
+
+  const handleLogout = () => {
+    logout()
+    router.push("/")
+  }
 
   return (
     <>
@@ -56,7 +66,7 @@ export function Sidebar() {
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto p-4 space-y-2">
-            {menuItems.map((item) => (
+            {visibleMenuItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -76,10 +86,11 @@ export function Sidebar() {
 
           {/* Footer */}
           <div className="p-4 border-t border-sidebar-border space-y-2">
-            <Button variant="outline" className="w-full justify-start text-sidebar-foreground bg-transparent">
-              Profile
-            </Button>
-            <Button variant="outline" className="w-full justify-start text-sidebar-foreground bg-transparent">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start text-sidebar-foreground bg-transparent"
+              onClick={handleLogout}
+            >
               Logout
             </Button>
           </div>

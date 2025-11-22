@@ -9,7 +9,7 @@ interface AuthGuardProps {
 };
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { isAuthenticated, accessToken, isLoading, refreshToken } = useAuthStore();
+  const { isAuthenticated, accessToken, isLoading, refreshToken, user, fetchProfile } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
@@ -19,8 +19,14 @@ export function AuthGuard({ children }: AuthGuardProps) {
     // Redirect to login if not authenticated or no token
     if (!isAuthenticated || !accessToken || !refreshToken) {
       router.push("/")
+      return
     }
-  }, [isAuthenticated, accessToken, isLoading, router])
+
+    // Fetch profile if authenticated but profile not loaded
+    if (isAuthenticated && accessToken && !user) {
+      fetchProfile()
+    }
+  }, [isAuthenticated, accessToken, isLoading, router, user, fetchProfile])
 
   // Show loading while checking auth
   if (isLoading) {
