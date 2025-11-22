@@ -53,14 +53,6 @@ export const MENU_ITEMS: MenuItem[] = [
     ],
   },
   {
-    label: "Locations",
-    href: "/dashboard/locations",
-    icon: "🌍",
-    requiredPermissions: [
-      PermissionsEnum.DASHBOARD_VIEW,
-    ],
-  },
-  {
     label: "Mapping",
     href: "/dashboard/mapping",
     icon: "🗺️",

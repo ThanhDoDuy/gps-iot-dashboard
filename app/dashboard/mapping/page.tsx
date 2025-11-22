@@ -10,7 +10,16 @@ import { machinesApi } from "@/lib/api/machines/api"
 import { Device } from "@/lib/api/devices/types"
 import { Machine } from "@/lib/api/machines/types"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, Search } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Country, City } from "@/lib/api/locations/types"
 
 export default function MappingPage() {
   const { accessToken, isAuthenticated } = useAuthStore()
@@ -34,6 +43,14 @@ export default function MappingPage() {
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null)
   const [isLinking, setIsLinking] = useState(false)
   const [isUnlinking, setIsUnlinking] = useState<string | null>(null)
+
+  // State for filtering
+  const [searchInput, setSearchInput] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [countryFilter, setCountryFilter] = useState<string>("")
+  const [cityFilter, setCityFilter] = useState<string>("")
+  const [countries, setCountries] = useState<Country[]>([])
+  const [cities, setCities] = useState<Record<string, City[]>>({})
 
   // Fetch data from API
   const fetchDevices = async () => {
@@ -71,8 +88,22 @@ export default function MappingPage() {
     }
 
     try {
-      const response = await machinesApi.getMachines(accessToken)
-      setMachines(response.data)
+      // Fetch all machines with pagination (max limit is 100)
+      let allMachines: Machine[] = []
+      let skip = 0
+      const limit = 100
+      let hasMore = true
+
+      while (hasMore) {
+        const response = await machinesApi.getMachines(accessToken, { limit, skip })
+        allMachines = [...allMachines, ...response.data]
+        
+        // Check if there are more machines to fetch
+        hasMore = response.pagination.hasNext
+        skip += limit
+      }
+
+      setMachines(allMachines)
     } catch (err) {
       console.error('Failed to load machines:', err)
       setError('Failed to load machines')
@@ -231,11 +262,113 @@ export default function MappingPage() {
     }
   }
 
-  // Use pre-filtered data from API with memoization
-  const linkedDevices = useMemo(() => 
-    devices.filter((d) => d.machine_id), 
-    [devices]
-  );
+  // Extract countries and cities from devices data
+  const extractCountriesAndCities = useCallback((devicesData: Device[]) => {
+    interface CountryInfo {
+      country_code: string;
+      name: string;
+    }
+    interface CityInfo {
+      city_code: string;
+      name: string;
+      country_code: string;
+    }
+
+    const countriesMap: Record<string, CountryInfo> = {}
+    const citiesMap: Record<string, Record<string, CityInfo>> = {}
+
+    devicesData.forEach(device => {
+      if (device.country) {
+        const countryCode = device.country.toLowerCase()
+        if (!countriesMap[countryCode]) {
+          countriesMap[countryCode] = {
+            country_code: countryCode,
+            name: countryCode.toUpperCase()
+          }
+        }
+
+        if (device.city) {
+          const cityCode = device.city.toLowerCase()
+          if (!citiesMap[countryCode]) {
+            citiesMap[countryCode] = {}
+          }
+          if (!citiesMap[countryCode][cityCode]) {
+            citiesMap[countryCode][cityCode] = {
+              city_code: cityCode,
+              name: cityCode.toUpperCase(),
+              country_code: countryCode
+            }
+          }
+        }
+      }
+    })
+
+    // Convert to arrays
+    const countriesData: Country[] = Object.values(countriesMap).map((country) => ({
+      country_code: country.country_code,
+      city_code: '#' as const,
+      name: country.name,
+      is_active: true,
+      created_at: new Date().toISOString()
+    }))
+
+    const citiesData: Record<string, City[]> = {}
+    Object.keys(citiesMap).forEach(countryCode => {
+      const countryCities = citiesMap[countryCode]
+      citiesData[countryCode] = Object.values(countryCities).map((city) => ({
+        country_code: city.country_code,
+        city_code: city.city_code,
+        name: city.name,
+        is_active: true,
+        created_at: new Date().toISOString()
+      }))
+    })
+
+    setCountries(countriesData)
+    setCities(citiesData)
+  }, [])
+
+  // Extract countries and cities when devices are loaded
+  useEffect(() => {
+    if (devices.length > 0) {
+      extractCountriesAndCities(devices)
+    }
+  }, [devices, extractCountriesAndCities])
+
+  // Use pre-filtered data from API with memoization and apply filters
+  const linkedDevices = useMemo(() => {
+    let filtered = devices.filter((d) => d.machine_id)
+
+    // Apply search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase()
+      filtered = filtered.filter(device => {
+        const linkedMachine = machines.find((m) => m.machine_id === device.machine_id)
+        return (
+          device.device_id.toLowerCase().includes(searchLower) ||
+          device.model?.toLowerCase().includes(searchLower) ||
+          linkedMachine?.name.toLowerCase().includes(searchLower) ||
+          linkedMachine?.address.toLowerCase().includes(searchLower)
+        )
+      })
+    }
+
+    // Apply country filter
+    if (countryFilter) {
+      filtered = filtered.filter(device => 
+        device.country?.toLowerCase() === countryFilter.toLowerCase()
+      )
+    }
+
+    // Apply city filter
+    if (cityFilter) {
+      filtered = filtered.filter(device => 
+        device.city?.toLowerCase() === cityFilter.toLowerCase()
+      )
+    }
+
+    return filtered
+  }, [devices, machines, searchTerm, countryFilter, cityFilter]);
 
   // Reverse geocode device locations when devices are loaded
   useEffect(() => {
@@ -248,6 +381,28 @@ export default function MappingPage() {
       }
     })
   }, [linkedDevices, reverseGeocode, isReverseGeocoding])
+
+  // Filter handlers
+  const handleSearch = () => {
+    setSearchTerm(searchInput)
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
+  const availableCities = countryFilter && countryFilter !== "all" ? cities[countryFilter] || [] : []
+
+  const handleCountryFilterChange = (value: string) => {
+    setCountryFilter(value === "all" ? "" : value)
+    setCityFilter("") // Reset city filter when country changes
+  }
+
+  const handleCityFilterChange = (value: string) => {
+    setCityFilter(value === "all" ? "" : value)
+  }
 
   if (isLoading) {
     return (
@@ -288,12 +443,84 @@ export default function MappingPage() {
           <Card className="lg:col-span-2 bg-card border-border">
             <CardHeader>
               <CardTitle>Linked Devices & Machines</CardTitle>
-              <CardDescription>Active device-machine connections</CardDescription>
+              <CardDescription>
+                Active device-machine connections ({linkedDevices.length} linked)
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+              {/* Filter Section */}
+              <div className="mb-4 space-y-3">
+                <div className="relative">
+                  <Input 
+                    placeholder="Search by device ID, model, machine name, or address" 
+                    className="bg-input border-border pr-10"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                    onClick={handleSearch}
+                  >
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-sm font-medium text-foreground">Filter by Country:</label>
+                  <Select
+                    value={countryFilter || "all"}
+                    onValueChange={handleCountryFilterChange}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Countries</SelectItem>
+                      {countries.map((country) => (
+                        <SelectItem key={country.country_code} value={country.country_code}>
+                          {country.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <label className="text-sm font-medium text-foreground">Filter by City:</label>
+                  <Select
+                    value={cityFilter || "all"}
+                    onValueChange={handleCityFilterChange}
+                    disabled={!countryFilter || countryFilter === "all"}
+                  >
+                    <SelectTrigger className="w-48" disabled={!countryFilter || countryFilter === "all"}>
+                      <SelectValue placeholder={countryFilter && countryFilter !== "all" ? "Select city" : "Select country first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Cities</SelectItem>
+                      {availableCities.length > 0 ? (
+                        availableCities.map((city) => (
+                          <SelectItem key={city.city_code} value={city.city_code}>
+                            {city.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-cities" disabled>No cities available</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Linked Devices List with Scroll */}
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                 {linkedDevices.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No linked pairs yet</p>
+                  <p className="text-muted-foreground text-sm text-center py-4">
+                    {searchTerm || countryFilter || cityFilter 
+                      ? "No linked pairs found matching your filters" 
+                      : "No linked pairs yet"}
+                  </p>
                 ) : (
                   linkedDevices.map((device) => {
                     const linkedMachine = machines.find((m) => m.machine_id === device.machine_id)
